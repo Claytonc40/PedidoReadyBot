@@ -12,7 +12,7 @@ const { processOrders, initializeCheckpoint, getCurrentCheckpoint } = require('.
 const databaseService = require('./services/databaseService');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 80
 
 // Middleware de segurança
 app.use(helmet({
