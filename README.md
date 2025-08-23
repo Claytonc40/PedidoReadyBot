@@ -334,13 +334,30 @@ EXPOSE 3001
 CMD ["npm", "start"]
 ```
 
-### PM2
+### PM2 (Recomendado para Produção)
 ```bash
+# Instalar PM2 globalmente
 npm install -g pm2
-pm2 start server.js --name "pedido-ready-bot"
+
+# Iniciar com configuração otimizada
+pm2 start ecosystem.config.js --env production
+
+# Configurar para iniciar com o sistema
 pm2 startup
 pm2 save
+
+# Gerenciar a aplicação
+pm2 status                    # Ver status
+pm2 logs PedidoReadyBot      # Ver logs
+pm2 restart PedidoReadyBot   # Reiniciar
+pm2 monit                    # Monitorar recursos
 ```
+
+**🎮 Script de Gerenciamento (Windows):**
+- Duplo-clique em `pm2-manager.bat` para interface amigável
+- Menu com opções para iniciar, parar, reiniciar e monitorar
+
+**📖 Veja o [Guia PM2](PM2.md) para configurações avançadas!**
 
 ## 🤝 Contribuição
 
