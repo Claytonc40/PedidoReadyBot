@@ -23,15 +23,15 @@ module.exports = {
       ],
       env: {
         NODE_ENV: 'production',
-        PORT: 3001
+        PORT: 80
       },
       env_development: {
         NODE_ENV: 'development',
-        PORT: 3001
+        PORT: 80
       },
       env_production: {
         NODE_ENV: 'production',
-        PORT: 3001
+        PORT: 80
       },
       error_file: './logs/err.log',
       out_file: './logs/out.log',
