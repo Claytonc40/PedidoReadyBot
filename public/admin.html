@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PedidoReadyBot - Administração</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 10px;
+            backdrop-filter: blur(10px);
+        }
+
+        .nav-tab {
+            background: none;
+            border: none;
+            color: white;
+            padding: 15px 25px;
+            margin: 0 5px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        .nav-tab.active {
+            background: rgba(255,255,255,0.2);
+            transform: translateY(-2px);
+        }
+
+        .nav-tab:hover:not(.active) {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .content-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            font-weight: 500;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .form-checkbox {
+            margin-right: 8px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .close {
+            background: none;
+            border: none;
+            font-size: 2rem;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .nav-tabs {
+                flex-direction: column;
+            }
+            
+            .nav-tab {
+                margin: 2px 0;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚙️ Painel de Administração</h1>
+            <p>Gerencie restaurantes, áreas e configurações do PedidoReadyBot</p>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showTab('overview')">📊 Visão Geral</button>
+            <button class="nav-tab" onclick="showTab('restaurants')">🏪 Restaurantes</button>
+            <button class="nav-tab" onclick="showTab('areas')">🔧 Áreas</button>
+            <button class="nav-tab" onclick="showTab('settings')">⚙️ Configurações</button>
+        </div>
+
+        <!-- Tab: Visão Geral -->
+        <div id="overview" class="tab-content active">
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title">📊 Estatísticas do Sistema</div>
+                    <button class="btn" onclick="refreshStats()">🔄 Atualizar</button>
+                </div>
+                <div id="stats-content">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando estatísticas...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Restaurantes -->
+        <div id="restaurants" class="tab-content">
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title">🏪 Gerenciar Restaurantes</div>
+                    <button class="btn" onclick="showRestaurantModal()">➕ Adicionar Restaurante</button>
+                </div>
+                <div id="restaurants-content">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando restaurantes...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Áreas -->
+        <div id="areas" class="tab-content">
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title">🔧 Gerenciar Áreas de Processamento</div>
+                    <button class="btn" onclick="showAreaModal()">➕ Adicionar Área</button>
+                </div>
+                <div id="areas-content">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando áreas...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Configurações -->
+        <div id="settings" class="tab-content">
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title">⚙️ Configurações do Sistema</div>
+                </div>
+                <div id="settings-content">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando configurações...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Restaurante -->
+    <div id="restaurantModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title" id="restaurantModalTitle">Adicionar Restaurante</div>
+                <button class="close" onclick="closeRestaurantModal()">&times;</button>
+            </div>
+            <form id="restaurantForm">
+                <div class="form-group">
+                    <label class="form-label">Código *</label>
+                    <input type="text" class="form-input" id="restaurantCode" required maxlength="10">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nome *</label>
+                    <input type="text" class="form-input" id="restaurantName" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descrição</label>
+                    <textarea class="form-input form-textarea" id="restaurantDescription"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" class="form-checkbox" id="restaurantActive" checked>
+                        Ativo
+                    </label>
+                </div>
+                <input type="hidden" id="restaurantId">
+                <div style="text-align: right;">
+                    <button type="button" class="btn btn-secondary" onclick="closeRestaurantModal()">Cancelar</button>
+                    <button type="submit" class="btn">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para Área -->
+    <div id="areaModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title" id="areaModalTitle">Adicionar Área</div>
+                <button class="close" onclick="closeAreaModal()">&times;</button>
+            </div>
+            <form id="areaForm">
+                <div class="form-group">
+                    <label class="form-label">Código *</label>
+                    <input type="text" class="form-input" id="areaCode" required maxlength="10">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nome *</label>
+                    <input type="text" class="form-input" id="areaName" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descrição</label>
+                    <textarea class="form-input form-textarea" id="areaDescription"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" class="form-checkbox" id="areaActive" checked>
+                        Ativo
+                    </label>
+                </div>
+                <input type="hidden" id="areaId">
+                <div style="text-align: right;">
+                    <button type="button" class="btn btn-secondary" onclick="closeAreaModal()">Cancelar</button>
+                    <button type="submit" class="btn">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

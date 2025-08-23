@@ -16,10 +16,26 @@ class DatabaseService {
     }
   }
 
-  init() {
+  async init() {
     this.db = new Database(this.dbPath);
     this.createTables();
     this.insertDefaultData();
+    
+    // Verificar se precisa obter token na inicialização
+    await this.checkAndInitializeToken();
+  }
+
+  async checkAndInitializeToken() {
+    try {
+      const token = this.getSetting('JWT_TOKEN');
+      if (!token || token === 'aguardando_obtencao_automatica' || token === 'seu_token_jwt_aqui') {
+        console.log('🔐 Inicializando token JWT...');
+        await this.refreshToken();
+      }
+    } catch (error) {
+      console.log('⚠️ Não foi possível obter token na inicialização:', error.message);
+      console.log('   O token será obtido quando necessário durante a execução.');
+    }
   }
 
   createTables() {
@@ -102,8 +118,7 @@ class DatabaseService {
     // Inserir configurações padrão
     const defaultSettings = [
       { key: 'CRON_PATTERN', value: '*/5 * * * *', description: 'Padrão do cron job' },
-      { key: 'CRON_TIMEZONE', value: 'America/Sao_Paulo', description: 'Timezone do cron' },
-      { key: 'JWT_TOKEN', value: 'seu_token_jwt_aqui', description: 'Token JWT para autenticação' }
+      { key: 'CRON_TIMEZONE', value: 'America/Sao_Paulo', description: 'Timezone do cron' }
     ];
 
     defaultSettings.forEach(setting => {
@@ -115,6 +130,15 @@ class DatabaseService {
         `).run(setting.key, setting.value, setting.description);
       }
     });
+
+    // Criar JWT_TOKEN se não existir (será preenchido automaticamente)
+    const jwtExists = this.db.prepare('SELECT id FROM settings WHERE key = ?').get('JWT_TOKEN');
+    if (!jwtExists) {
+      this.db.prepare(`
+        INSERT INTO settings (key, value, description) 
+        VALUES (?, ?, ?)
+      `).run('JWT_TOKEN', 'aguardando_obtencao_automatica', 'Token JWT obtido automaticamente da API');
+    }
 
     console.log('✅ Dados padrão inseridos/verificados');
   }
@@ -238,6 +262,82 @@ class DatabaseService {
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
+    }
+  }
+
+  // Métodos para gerenciamento de token
+  async getOrRefreshToken() {
+    try {
+      let token = this.getSetting('JWT_TOKEN');
+      
+      // Se não há token ou está expirado, obter um novo
+      if (!token || token === 'seu_token_jwt_aqui') {
+        console.log('🔐 Token não encontrado ou inválido, obtendo novo token...');
+        token = await this.refreshToken();
+      }
+      
+      return token;
+    } catch (error) {
+      console.error('❌ Erro ao obter token:', error.message);
+      throw error;
+    }
+  }
+
+  async refreshToken() {
+    try {
+      console.log('🔄 Obtendo novo token da API...');
+      
+      const url = 'https://adsa-br-ui.fkdlv.com/ui/token';
+      const headers = {
+        'sec-ch-ua-platform': '"Windows"',
+        'Referer': '',
+        'sec-ch-ua': '"Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"',
+        'sec-ch-ua-mobile': '?0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+        'accept': 'application/json',
+        'DNT': '1',
+        'content-type': 'application/x-www-form-urlencoded'
+      };
+      
+      const data = new URLSearchParams({
+        brand: 'ADSA',
+        apikey: '5dGp7PG47wCVRspbUiw2q6mSHEWONidv',
+        username: 'LBR.ADSA',
+        passwd: '216d1b02a63f567bfb717df1263b8556a4eac1f7'
+      });
+      
+      const axios = require('axios');
+      const response = await axios.post(url, data, { 
+        headers,
+        timeout: 60000 // 60 segundos de timeout
+      });
+      
+      if (response.data && response.data.token) {
+        const newToken = response.data.token;
+        
+        // Salvar novo token no banco
+        this.updateSetting('JWT_TOKEN', newToken, 'Token JWT obtido automaticamente da API');
+        
+        console.log('✅ Novo token obtido e salvo com sucesso');
+        return newToken;
+      } else {
+        throw new Error('Resposta da API não contém token válido');
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao obter novo token:', error.message);
+      throw new Error(`Falha ao obter novo token: ${error.message}`);
+    }
+  }
+
+  async handleTokenExpiration() {
+    try {
+      console.log('🔄 Token expirado detectado, obtendo novo token...');
+      const newToken = await this.refreshToken();
+      return newToken;
+    } catch (error) {
+      console.error('❌ Erro ao renovar token expirado:', error.message);
+      throw error;
     }
   }
 
