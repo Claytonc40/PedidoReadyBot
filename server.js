@@ -885,6 +885,12 @@ function setupCronJob() {
           console.log('⚠️ Cron job executado com avisos:', result.message);
         } else {
           console.log('✅ Cron job executado com sucesso');
+          
+          // Mostrar informações sobre limpeza da fila
+          if (result.queueCleanup && result.queueCleanup.removed > 0) {
+            console.log(`🧹 Fila limpa automaticamente: ${result.queueCleanup.removed} pedidos removidos`);
+            console.log(`📋 Pedidos restantes na fila: ${result.queueCleanup.remaining}`);
+          }
         }
       } catch (error) {
         console.error('❌ Erro crítico no cron job:', error.message);
@@ -901,7 +907,11 @@ function setupCronJob() {
     cronJob = cron.schedule('*/5 * * * *', async () => {
       console.log('📅 Executando cron job de fallback...');
       try {
-        await processOrders();
+        const result = await processOrders();
+        if (result.success && result.queueCleanup && result.queueCleanup.removed > 0) {
+          console.log(`🧹 Fila limpa automaticamente: ${result.queueCleanup.removed} pedidos removidos`);
+          console.log(`📋 Pedidos restantes na fila: ${result.queueCleanup.remaining}`);
+        }
       } catch (error) {
         console.error('❌ Erro no cron job de fallback:', error.message);
       }

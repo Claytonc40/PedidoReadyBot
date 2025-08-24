@@ -950,6 +950,9 @@ async function processOrders() {
       }
     });
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    // Limpar pedidos processados da fila de pendentes usando função auxiliar
+    const queueCleanupResult = clearProcessedOrdersFromQueue(orderIds);
+    
     console.log(`\n🚀 ==========================================`);
     console.log(`🚀 PROCESSAMENTO FINALIZADO COM SUCESSO`);
     console.log(`🚀 ==========================================\n`);
@@ -965,7 +968,8 @@ async function processOrders() {
       failedStores: orderResult.failedStores,
       duration,
       results,
-      storeResults
+      storeResults,
+      queueCleanup: queueCleanupResult
     };
     
   } catch (error) {
@@ -989,6 +993,42 @@ async function processOrders() {
     
     throw error;
   }
+}
+
+/**
+ * Limpa pedidos processados da fila de pendentes
+ * Esta função é chamada automaticamente quando o cron job processa pedidos
+ */
+function clearProcessedOrdersFromQueue(processedIds) {
+  if (!processedIds || processedIds.length === 0 || pendingOrders.length === 0) {
+    return { removed: 0, remaining: pendingOrders.length };
+  }
+  
+  const beforeCount = pendingOrders.length;
+  
+  // Remover TODOS os pedidos que foram processados (sucesso ou erro)
+  // Isso evita que pedidos com erro fiquem presos na fila para sempre
+  pendingOrders = pendingOrders.filter(order => !processedIds.includes(order.id));
+  
+  const afterCount = pendingOrders.length;
+  const removedCount = beforeCount - afterCount;
+  
+  if (removedCount > 0) {
+    console.log(`🧹 Fila de pedidos limpa: ${removedCount} pedidos processados removidos`);
+    console.log(`📋 Pedidos restantes na fila: ${afterCount}/${QUEUE_CONFIG.MAX_ORDERS}`);
+    
+    // Atualizar estatísticas da fila
+    queueStats.totalProcessed += removedCount;
+    queueStats.lastProcessed = new Date().toISOString();
+    
+    // Log detalhado dos pedidos removidos
+    const removedOrders = processedIds.filter(id => 
+      pendingOrders.find(order => order.id === id) === undefined
+    );
+    console.log(`📝 Pedidos removidos da fila: ${removedOrders.join(', ')}`);
+  }
+  
+  return { removed: removedCount, remaining: afterCount };
 }
 
 /**
@@ -1209,20 +1249,21 @@ async function processPendingOrdersQueue() {
       }
     }
     
-    // Remover pedidos processados da fila
+    // Remover pedidos processados da fila usando função auxiliar
     const processedIds = results.map(r => r.id);
-    pendingOrders = pendingOrders.filter(order => !processedIds.includes(order.id));
+    const queueCleanupResult = clearProcessedOrdersFromQueue(processedIds);
     
-    // Atualizar estatísticas da fila
-    queueStats.totalProcessed += successCount;
-    queueStats.lastProcessed = new Date().toISOString();
+    // Atualizar estatísticas da fila (já feito na função auxiliar)
+    // queueStats.totalProcessed += successCount; // Removido - já é feito na função auxiliar
+    // queueStats.lastProcessed = new Date().toISOString(); // Removido - já é feito na função auxiliar
     
     console.log(`\n🎯 PROCESSAMENTO DA FILA CONCLUÍDO`);
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     console.log(`✅ Sucessos: ${successCount}`);
     console.log(`❌ Erros: ${errorCount}`);
     console.log(`📦 Total processado: ${results.length}`);
-    console.log(`📋 Restantes na fila: ${pendingOrders.length}/${QUEUE_CONFIG.MAX_ORDERS}`);
+    console.log(`🧹 Fila limpa: ${queueCleanupResult.removed} pedidos removidos`);
+    console.log(`📋 Restantes na fila: ${queueCleanupResult.remaining}/${QUEUE_CONFIG.MAX_ORDERS}`);
     console.log(`📊 Estatísticas da fila:`);
     console.log(`   - Total adicionado: ${queueStats.totalAdded}`);
     console.log(`   - Total processado: ${queueStats.totalProcessed}`);
@@ -1412,6 +1453,7 @@ module.exports = {
   clearPendingOrders,
   addOrderToQueue,
   getQueueConfig,
-  updateQueueConfig
+  updateQueueConfig,
+  clearProcessedOrdersFromQueue
 };
 
