@@ -886,10 +886,19 @@ function setupCronJob() {
         } else {
           console.log('✅ Cron job executado com sucesso');
           
-          // Mostrar informações sobre limpeza da fila
+          // Mostrar informações detalhadas sobre limpeza da fila
           if (result.queueCleanup && result.queueCleanup.removed > 0) {
-            console.log(`🧹 Fila limpa automaticamente: ${result.queueCleanup.removed} pedidos removidos`);
-            console.log(`📋 Pedidos restantes na fila: ${result.queueCleanup.remaining}`);
+            console.log(`🧹 ==========================================`);
+            console.log(`🧹 FILA LIMPA AUTOMATICAMENTE`);
+            console.log(`🧹 ==========================================`);
+            console.log(`📊 Resumo da limpeza:`);
+            console.log(`   - Método de processamento: ${result.processingMethod || 'sendFullReady'}`);
+            console.log(`   - Pedidos processados: ${result.processed}`);
+            console.log(`   - Pedidos removidos da fila: ${result.queueCleanup.removed}`);
+            console.log(`   - Pedidos restantes na fila: ${result.queueCleanup.remaining}`);
+            console.log(`   - Status da fila: ${result.queueStatus?.before || 'N/A'} → ${result.queueStatus?.after || 'N/A'}`);
+            console.log(`   - Mensagem: ${result.queueCleanup.message}`);
+            console.log(`🧹 ==========================================`);
           }
         }
       } catch (error) {
@@ -909,8 +918,17 @@ function setupCronJob() {
       try {
         const result = await processOrders();
         if (result.success && result.queueCleanup && result.queueCleanup.removed > 0) {
-          console.log(`🧹 Fila limpa automaticamente: ${result.queueCleanup.removed} pedidos removidos`);
-          console.log(`📋 Pedidos restantes na fila: ${result.queueCleanup.remaining}`);
+          console.log(`🧹 ==========================================`);
+          console.log(`🧹 FILA LIMPA AUTOMATICAMENTE (FALLBACK)`);
+          console.log(`🧹 ==========================================`);
+          console.log(`📊 Resumo da limpeza:`);
+          console.log(`   - Método de processamento: ${result.processingMethod || 'sendFullReady'}`);
+          console.log(`   - Pedidos processados: ${result.processed}`);
+          console.log(`   - Pedidos removidos da fila: ${result.queueCleanup.removed}`);
+          console.log(`   - Pedidos restantes na fila: ${result.queueCleanup.remaining}`);
+          console.log(`   - Status da fila: ${result.queueStatus?.before || 'N/A'} → ${result.queueStatus?.after || 'N/A'}`);
+          console.log(`   - Mensagem: ${result.queueCleanup.message}`);
+          console.log(`🧹 ==========================================`);
         }
       } catch (error) {
         console.error('❌ Erro no cron job de fallback:', error.message);

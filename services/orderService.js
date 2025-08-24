@@ -953,6 +953,21 @@ async function processOrders() {
     // Limpar pedidos processados da fila de pendentes usando função auxiliar
     const queueCleanupResult = clearProcessedOrdersFromQueue(orderIds);
     
+    // Log detalhado sobre a limpeza da fila
+    if (queueCleanupResult.removed > 0) {
+      console.log(`\n🧹 ==========================================`);
+      console.log(`🧹 FILA DE PEDIDOS LIMPA`);
+      console.log(`🧹 ==========================================`);
+      console.log(`📊 Resumo da limpeza:`);
+      console.log(`   - Pedidos processados: ${orderIds.length}`);
+      console.log(`   - Pedidos removidos da fila: ${queueCleanupResult.removed}`);
+      console.log(`   - Pedidos restantes na fila: ${queueCleanupResult.remaining}`);
+      console.log(`   - Mensagem: ${queueCleanupResult.message}`);
+      console.log(`🧹 ==========================================\n`);
+    } else {
+      console.log(`\nℹ️ Nenhum pedido foi removido da fila neste ciclo`);
+    }
+    
     console.log(`\n🚀 ==========================================`);
     console.log(`🚀 PROCESSAMENTO FINALIZADO COM SUCESSO`);
     console.log(`🚀 ==========================================\n`);
@@ -969,7 +984,15 @@ async function processOrders() {
       duration,
       results,
       storeResults,
-      queueCleanup: queueCleanupResult
+      queueCleanup: queueCleanupResult,
+      // Informações adicionais sobre o processamento
+      processingMethod: 'sendFullReady',
+      ordersProcessed: orderIds,
+      queueStatus: {
+        before: queueCleanupResult.remaining + queueCleanupResult.removed,
+        after: queueCleanupResult.remaining,
+        removed: queueCleanupResult.removed
+      }
     };
     
   } catch (error) {
@@ -997,18 +1020,25 @@ async function processOrders() {
 
 /**
  * Limpa pedidos processados da fila de pendentes
- * Esta função é chamada automaticamente quando o cron job processa pedidos
+ * Esta função é chamada automaticamente quando o cron job processa pedidos via sendFullReady
  */
 function clearProcessedOrdersFromQueue(processedIds) {
-  if (!processedIds || processedIds.length === 0 || pendingOrders.length === 0) {
-    return { removed: 0, remaining: pendingOrders.length };
+  if (!processedIds || processedIds.length === 0) {
+    return { removed: 0, remaining: pendingOrders.length, message: 'Nenhum ID para processar' };
+  }
+  
+  if (pendingOrders.length === 0) {
+    return { removed: 0, remaining: 0, message: 'Fila já está vazia' };
   }
   
   const beforeCount = pendingOrders.length;
   
-  // Remover TODOS os pedidos que foram processados (sucesso ou erro)
-  // Isso evita que pedidos com erro fiquem presos na fila para sempre
-  pendingOrders = pendingOrders.filter(order => !processedIds.includes(order.id));
+  // Encontrar pedidos que estão na fila e foram processados
+  const ordersToRemove = pendingOrders.filter(order => processedIds.includes(order.id));
+  const ordersToKeep = pendingOrders.filter(order => !processedIds.includes(order.id));
+  
+  // Atualizar a fila
+  pendingOrders = ordersToKeep;
   
   const afterCount = pendingOrders.length;
   const removedCount = beforeCount - afterCount;
@@ -1022,13 +1052,25 @@ function clearProcessedOrdersFromQueue(processedIds) {
     queueStats.lastProcessed = new Date().toISOString();
     
     // Log detalhado dos pedidos removidos
-    const removedOrders = processedIds.filter(id => 
-      pendingOrders.find(order => order.id === id) === undefined
-    );
-    console.log(`📝 Pedidos removidos da fila: ${removedOrders.join(', ')}`);
+    const removedOrderIds = ordersToRemove.map(order => order.id);
+    console.log(`📝 Pedidos removidos da fila: ${removedOrderIds.join(', ')}`);
+    
+    // Log detalhado dos pedidos que permaneceram
+    if (afterCount > 0) {
+      const remainingOrderIds = ordersToKeep.map(order => order.id);
+      console.log(`📋 Pedidos que permaneceram na fila: ${remainingOrderIds.join(', ')}`);
+    }
+  } else {
+    console.log(`ℹ️ Nenhum pedido da fila foi processado neste ciclo`);
   }
   
-  return { removed: removedCount, remaining: afterCount };
+  return { 
+    removed: removedCount, 
+    remaining: afterCount, 
+    message: removedCount > 0 ? `${removedCount} pedidos removidos` : 'Nenhum pedido removido',
+    processedIds: processedIds,
+    removedOrderIds: ordersToRemove.map(order => order.id)
+  };
 }
 
 /**
