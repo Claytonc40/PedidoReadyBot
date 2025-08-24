@@ -1261,3 +1261,243 @@ window.onclick = function(event) {
         event.target.style.display = 'none';
     }
 }
+
+// ===== FUNÇÕES DE IMPORTAÇÃO DE RESTAURANTES =====
+
+// Variáveis globais para importação
+let selectedFile = null;
+let importData = null;
+
+// Mostrar modal de importação
+function showImportModal() {
+    const modal = document.getElementById('importModal');
+    if (modal) {
+        modal.style.display = 'block';
+        setupFileUpload();
+        resetImportModal();
+    }
+}
+
+// Fechar modal de importação
+function closeImportModal() {
+    const modal = document.getElementById('importModal');
+    if (modal) {
+        modal.style.display = 'none';
+        selectedFile = null;
+        importData = null;
+    }
+}
+
+// Configurar área de upload de arquivos
+function setupFileUpload() {
+    const fileUploadArea = document.getElementById('fileUploadArea');
+    const fileInput = document.getElementById('fileInput');
+
+    if (fileUploadArea && fileInput) {
+        // Clique para selecionar arquivo
+        fileUploadArea.addEventListener('click', () => fileInput.click());
+
+        // Drag and drop
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('dragover');
+        });
+
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+
+        // Seleção de arquivo via input
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+    }
+}
+
+// Manipular seleção de arquivo
+function handleFileSelect(file) {
+    if (!file.name.match(/\.(xlsx|xls)$/i)) {
+        showError('❌ Por favor, selecione um arquivo Excel válido (.xlsx ou .xls)');
+        return;
+    }
+
+    selectedFile = file;
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileInfo').style.display = 'block';
+    document.getElementById('previewBtn').disabled = false;
+    document.getElementById('importBtn').disabled = false;
+
+    // Ler arquivo Excel
+    readExcelFile(file);
+}
+
+// Remover arquivo selecionado
+function removeFile() {
+    selectedFile = null;
+    importData = null;
+    document.getElementById('fileInfo').style.display = 'none';
+    document.getElementById('previewBtn').disabled = true;
+    document.getElementById('importBtn').disabled = true;
+    document.getElementById('importPreview').style.display = 'none';
+    document.getElementById('importProgress').style.display = 'none';
+}
+
+// Ler arquivo Excel
+function readExcelFile(file) {
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+        try {
+            // Arquivo carregado com sucesso
+            console.log('Arquivo selecionado:', file.name);
+            showSuccess('✅ Arquivo carregado com sucesso! Clique em "Prévia" para ver os dados.');
+            
+            // Simular dados carregados para habilitar prévia
+            importData = {
+                fileName: file.name,
+                fileSize: file.size,
+                loaded: true
+            };
+        } catch (error) {
+            showError('❌ Erro ao ler arquivo Excel: ' + error.message);
+        }
+    };
+    
+    reader.readAsArrayBuffer(file);
+}
+
+// Fazer prévia da importação
+function previewImport() {
+    if (!selectedFile || !importData) {
+        showError('❌ Nenhum arquivo selecionado ou dados não carregados');
+        return;
+    }
+
+    const previewContent = document.getElementById('previewContent');
+    const totalRecords = document.getElementById('totalRecords');
+    
+    // Simular dados de prévia baseados no arquivo
+    const previewHtml = `
+        <div style="margin-bottom: 10px;">
+            <strong>Arquivo: ${selectedFile.name}</strong>
+        </div>
+        <div style="margin-bottom: 10px;">
+            <strong>Estrutura esperada:</strong>
+        </div>
+        <div style="font-family: monospace; font-size: 0.9rem; background: #fff; padding: 10px; border-radius: 5px;">
+            <div style="color: #666; margin-bottom: 5px;">Código | Nome | Descrição | Ativo</div>
+            <div style="color: #333;">ARX | Restaurante ARX | Restaurante padrão ARX | Sim</div>
+            <div style="color: #333;">BED | Belém Drive | - | Sim</div>
+            <div style="color: #333;">PES | PES | - | Sim</div>
+        </div>
+        <div style="margin-top: 10px; font-size: 0.9rem; color: #666;">
+            <strong>Nota:</strong> O arquivo será processado no servidor durante a importação.
+        </div>
+    `;
+    
+    previewContent.innerHTML = previewHtml;
+    totalRecords.textContent = 'Processando...';
+    document.getElementById('importPreview').style.display = 'block';
+}
+
+// Iniciar importação
+async function startImport() {
+    if (!selectedFile) {
+        showError('❌ Nenhum arquivo selecionado');
+        return;
+    }
+
+    const skipExisting = document.getElementById('skipExisting').checked;
+    const updateExisting = document.getElementById('updateExisting').checked;
+
+    try {
+        // Mostrar progresso
+        document.getElementById('importProgress').style.display = 'block';
+        document.getElementById('importPreview').style.display = 'none';
+        document.getElementById('importProgressText').textContent = 'Enviando arquivo...';
+        
+        // Preparar dados para envio
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('skipExisting', skipExisting);
+        formData.append('updateExisting', updateExisting);
+        
+        // Fazer chamada para o servidor
+        const response = await fetch('/api/restaurants/import', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Mostrar resultados da importação
+            const results = result.results;
+            const message = `✅ Importação concluída!\n\n` +
+                          `📊 Total processado: ${results.total}\n` +
+                          `🆕 Novos: ${results.imported}\n` +
+                          `🔄 Atualizados: ${results.updated}\n` +
+                          `⏭️ Ignorados: ${results.skipped}\n` +
+                          `${results.errors.length > 0 ? `\n❌ Erros: ${results.errors.length}` : ''}`;
+            
+            if (results.errors.length > 0) {
+                showError(`⚠️ Importação concluída com erros:\n\n${results.errors.slice(0, 5).join('\n')}${results.errors.length > 5 ? '\n...' : ''}`);
+            } else {
+                showSuccess(message);
+            }
+            
+            closeImportModal();
+            loadRestaurants(); // Recarregar lista
+        } else {
+            showError('❌ Erro na importação: ' + result.error);
+        }
+        
+    } catch (error) {
+        showError('❌ Erro na importação: ' + error.message);
+    }
+}
+
+
+
+// Resetar modal de importação
+function resetImportModal() {
+    removeFile();
+    document.getElementById('skipExisting').checked = true;
+    document.getElementById('updateExisting').checked = true;
+    document.getElementById('importPreview').style.display = 'none';
+    document.getElementById('importProgress').style.display = 'none';
+}
+
+// Baixar modelo Excel
+function downloadTemplate() {
+    try {
+        // Criar link para o arquivo Excel existente
+        const link = document.createElement('a');
+        link.href = '/lojas.xlsx';
+        link.download = 'modelo_restaurantes.xlsx';
+        link.style.visibility = 'hidden';
+        
+        // Adicionar ao DOM e clicar
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Notificar usuário
+        showSuccess('📥 Modelo Excel baixado com sucesso! Use-o como base para sua planilha.');
+        
+    } catch (error) {
+        console.error('Erro ao baixar modelo:', error);
+        showError('❌ Erro ao baixar modelo Excel');
+    }
+}

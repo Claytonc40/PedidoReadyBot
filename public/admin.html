@@ -172,6 +172,73 @@
             background: #28a745;
         }
 
+        .btn-info {
+            background: #17a2b8;
+        }
+
+        .restaurant-controls {
+            display: flex;
+            gap: 10px;
+            margin-left: auto;
+        }
+
+        .file-upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .file-upload-area:hover {
+            border-color: #667eea;
+            background: #e9ecef;
+        }
+
+        .file-upload-area.dragover {
+            border-color: #28a745;
+            background: #d4edda;
+        }
+
+        .file-upload-content {
+            pointer-events: none;
+        }
+
+        .file-upload-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            color: #666;
+        }
+
+        .file-upload-text {
+            font-size: 1.1rem;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .file-upload-hint {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
         .table {
             width: 100%;
             border-collapse: collapse;
@@ -673,7 +740,12 @@
             <div class="content-card">
                 <div class="card-header">
                     <div class="card-title">🏪 Gerenciar Restaurantes</div>
-                    <button class="btn" onclick="showRestaurantModal()">➕ Adicionar Restaurante</button>
+                    <div class="restaurant-controls">
+                        <button class="btn btn-info" onclick="showImportModal()" title="Importar restaurantes de planilha Excel">
+                            📥 Importar Excel
+                        </button>
+                        <button class="btn" onclick="showRestaurantModal()">➕ Adicionar Restaurante</button>
+                    </div>
                 </div>
                 <div id="restaurants-content">
                     <div class="loading">
@@ -1010,6 +1082,108 @@
                     <button type="submit" class="btn">💾 Salvar Configurações</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal de Importação de Restaurantes -->
+    <div id="importModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">📥 Importar Restaurantes</div>
+                <button class="close" onclick="closeImportModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="config-section">
+                    <h4>📋 Instruções de Importação</h4>
+                    <p>A planilha deve conter as seguintes colunas:</p>
+                    <ul style="margin: 10px 0; padding-left: 20px;">
+                        <li><strong>Código:</strong> Código único do restaurante (máx. 10 caracteres)</li>
+                        <li><strong>Nome:</strong> Nome do restaurante</li>
+                        <li><strong>Descrição:</strong> Descrição opcional</li>
+                        <li><strong>Ativo:</strong> "Sim" ou "Não" para status ativo</li>
+                    </ul>
+                    <div style="text-align: center; margin: 20px 0;">
+                        <button type="button" class="btn btn-info" onclick="downloadTemplate()">
+                            📥 Baixar Modelo Excel (.xlsx)
+                        </button>
+                        <div style="margin-top: 10px; font-size: 0.9rem; color: #666;">
+                            <strong>💡 Dica:</strong> Use o modelo como base e preencha com seus dados
+                        </div>
+                    </div>
+                </div>
+
+                <div class="config-section">
+                    <h4>📁 Selecionar Arquivo</h4>
+                    <div class="form-group">
+                        <label class="form-label">Arquivo Excel (.xlsx, .xls)</label>
+                        <div class="file-upload-area" id="fileUploadArea">
+                            <div class="file-upload-content">
+                                <div class="file-upload-icon">📁</div>
+                                <div class="file-upload-text">
+                                    <strong>Clique para selecionar</strong> ou arraste o arquivo aqui
+                                </div>
+                                <div class="file-upload-hint">Suporta: .xlsx, .xls</div>
+                            </div>
+                            <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
+                        </div>
+                        <div id="fileInfo" style="display: none; margin-top: 10px; padding: 10px; background: #e9ecef; border-radius: 5px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span>📄</span>
+                                <span id="fileName"></span>
+                                <button type="button" class="btn btn-danger" onclick="removeFile()" style="padding: 5px 10px; font-size: 0.8rem;">❌</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="config-section">
+                    <h4>⚙️ Opções de Importação</h4>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="skipExisting" checked>
+                            Ignorar códigos já cadastrados
+                        </label>
+                        <small class="form-help">Se marcado, restaurantes com códigos existentes serão ignorados</small>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="updateExisting" checked>
+                            Atualizar restaurantes existentes
+                        </label>
+                        <small class="form-help">Se marcado, restaurantes existentes serão atualizados com novos dados</small>
+                    </div>
+                </div>
+
+                <div id="importPreview" style="display: none;">
+                    <div class="config-section">
+                        <h4>👀 Prévia da Importação</h4>
+                        <div id="previewContent" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px;">
+                            <!-- Prévia será inserida aqui -->
+                        </div>
+                        <div style="margin-top: 10px; text-align: center;">
+                            <small>Total de registros: <span id="totalRecords">0</span></small>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="importProgress" style="display: none;">
+                    <div class="config-section">
+                        <h4>🔄 Progresso da Importação</h4>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="importProgressFill"></div>
+                        </div>
+                        <div style="text-align: center; margin-top: 10px;">
+                            <span id="importProgressText">Processando...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeImportModal()">❌ Cancelar</button>
+                <button type="button" class="btn btn-info" id="previewBtn" onclick="previewImport()" disabled>👀 Prévia</button>
+                <button type="button" class="btn" id="importBtn" onclick="startImport()" disabled>🚀 Importar</button>
+            </div>
         </div>
     </div>
 

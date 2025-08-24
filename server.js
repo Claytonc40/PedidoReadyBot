@@ -8,6 +8,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cron = require('node-cron');
 const axios = require('axios');
+const multer = require('multer');
+const XLSX = require('xlsx');
 const { 
   processOrders, 
   initializeCheckpoint, 
@@ -25,6 +27,22 @@ const databaseService = require('./services/databaseService');
 
 const app = express();
 const PORT = process.env.PORT || 80;
+
+// Configuração do multer para upload de arquivos
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+        file.mimetype === 'application/vnd.ms-excel') {
+      cb(null, true);
+    } else {
+      cb(new Error('Apenas arquivos Excel são permitidos'));
+    }
+  }
+});
 
 // Middleware de segurança
 app.use(helmet({
@@ -277,6 +295,129 @@ app.delete('/api/restaurants/:id', (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Importar restaurantes de planilha Excel
+app.post('/api/restaurants/import', upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'Nenhum arquivo enviado' });
+    }
+
+    const { skipExisting, updateExisting } = req.body;
+    const skipExistingFlag = skipExisting === 'true';
+    const updateExistingFlag = updateExisting === 'true';
+
+    // Ler arquivo Excel
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    
+    // Converter para JSON
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    
+    if (data.length < 2) {
+      return res.status(400).json({ success: false, error: 'Planilha deve ter pelo menos cabeçalho e uma linha de dados' });
+    }
+
+    // Validar cabeçalhos
+    const headers = data[0];
+    const expectedHeaders = ['Código', 'Nome', 'Descrição', 'Ativo'];
+    
+    for (let i = 0; i < expectedHeaders.length; i++) {
+      if (headers[i] !== expectedHeaders[i]) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `Cabeçalho inválido na coluna ${i + 1}. Esperado: "${expectedHeaders[i]}", encontrado: "${headers[i]}"` 
+        });
+      }
+    }
+
+    // Processar dados
+    const results = {
+      total: 0,
+      imported: 0,
+      updated: 0,
+      skipped: 0,
+      errors: []
+    };
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row.length < 4) continue; // Pular linhas vazias
+      
+      const code = String(row[0]).trim();
+      const name = String(row[1]).trim();
+      const description = String(row[2] || '').trim();
+      const active = String(row[3] || 'Sim').toLowerCase() === 'sim';
+      
+      if (!code || !name) {
+        results.errors.push(`Linha ${i + 1}: Código e nome são obrigatórios`);
+        continue;
+      }
+
+      if (code.length > 10) {
+        results.errors.push(`Linha ${i + 1}: Código deve ter no máximo 10 caracteres`);
+        continue;
+      }
+
+      results.total++;
+
+      try {
+        // Verificar se restaurante já existe
+        const existingRestaurant = databaseService.getRestaurantByCode(code);
+        
+        if (existingRestaurant) {
+          if (skipExistingFlag) {
+            results.skipped++;
+            continue;
+          }
+          
+          if (updateExistingFlag) {
+            // Atualizar restaurante existente
+            const updateResult = databaseService.updateRestaurant(
+              existingRestaurant.id, 
+              code, 
+              name, 
+              description, 
+              active
+            );
+            
+            if (updateResult.success) {
+              results.updated++;
+            } else {
+              results.errors.push(`Linha ${i + 1}: ${updateResult.error}`);
+            }
+          } else {
+            results.skipped++;
+          }
+        } else {
+          // Adicionar novo restaurante
+          const addResult = databaseService.addRestaurant(code, name, description);
+          if (addResult.success) {
+            results.imported++;
+          } else {
+            results.errors.push(`Linha ${i + 1}: ${addResult.error}`);
+          }
+        }
+      } catch (error) {
+        results.errors.push(`Linha ${i + 1}: ${error.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Importação concluída',
+      results: results
+    });
+
+  } catch (error) {
+    console.error('Erro na importação:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro ao processar arquivo Excel: ' + error.message 
+    });
   }
 });
 
