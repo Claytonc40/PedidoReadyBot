@@ -35,6 +35,9 @@ function loadTabData(tabName) {
         case 'areas':
             loadAreas();
             break;
+        case 'monitoring':
+            loadMonitoringConfig();
+            break;
         case 'settings':
             loadSettings();
             break;
@@ -839,5 +842,422 @@ async function saveCronConfig(event) {
         
     } catch (error) {
         showError('❌ Erro ao salvar configuração do cron: ' + error.message);
+    }
+}
+
+// ===== FUNÇÕES DE MONITORAMENTO =====
+
+// Carregar configurações de monitoramento
+async function loadMonitoringConfig() {
+    try {
+        const response = await fetch('/api/monitoring/queue-config');
+        const result = await response.json();
+        
+        if (result.success) {
+            displayMonitoringConfig(result.data);
+        } else {
+            showError('Erro ao carregar configurações de monitoramento: ' + result.error);
+        }
+    } catch (error) {
+        showError('Erro ao carregar configurações de monitoramento: ' + error.message);
+    }
+}
+
+// Exibir configurações de monitoramento
+function displayMonitoringConfig(config) {
+    const content = document.getElementById('monitoring-content');
+    
+    content.innerHTML = `
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">${config.MAX_ORDERS}</div>
+                <div class="stat-label">Limite da Fila</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">${config.BATCH_SIZE}</div>
+                <div class="stat-label">Pedidos por Lote</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">${config.BATCH_DELAY}ms</div>
+                <div class="stat-label">Delay entre Lotes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">${config.CRON_SYNC ? '✅' : '❌'}</div>
+                <div class="stat-label">Sincronizado com Cron</div>
+            </div>
+        </div>
+        <div style="margin-top: 20px; text-align: center;">
+            <button class="btn" onclick="showMonitoringConfigModal()">
+                ⚙️ Configurar Monitoramento
+            </button>
+        </div>
+    `;
+}
+
+// Abrir modal de configurações de monitoramento
+function showMonitoringConfigModal() {
+    const modal = document.getElementById('monitoringConfigModal');
+    if (modal) {
+        modal.style.display = 'block';
+        loadCurrentMonitoringConfig();
+    }
+}
+
+// Fechar modal de configurações de monitoramento
+function closeMonitoringConfigModal() {
+    const modal = document.getElementById('monitoringConfigModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Carregar configurações atuais no modal
+async function loadCurrentMonitoringConfig() {
+    try {
+        const response = await fetch('/api/monitoring/queue-config');
+        const result = await response.json();
+        
+        if (result.success) {
+            const config = result.data;
+            
+            // Preencher campos do formulário
+            document.getElementById('maxOrders').value = config.MAX_ORDERS;
+            document.getElementById('batchSize').value = config.BATCH_SIZE;
+            document.getElementById('batchDelay').value = config.BATCH_DELAY;
+            document.getElementById('cronSync').value = config.CRON_SYNC.toString();
+            
+            // Carregar intervalo de monitoramento do banco de dados
+            try {
+                const intervalResponse = await fetch('/api/settings');
+                if (intervalResponse.ok) {
+                    const intervalResult = await intervalResponse.json();
+                    if (intervalResult.success && intervalResult.data) {
+                        // Procurar pela configuração MONITORING_INTERVAL
+                        const monitoringSetting = intervalResult.data.find(s => s.key === 'MONITORING_INTERVAL');
+                        if (monitoringSetting) {
+                            const intervalMs = parseInt(monitoringSetting.value);
+                            let interval, unit;
+                            
+                            if (intervalMs >= 60000) { // 1 minuto ou mais
+                                interval = Math.floor(intervalMs / 60000);
+                                unit = 'minutes';
+                            } else {
+                                interval = Math.floor(intervalMs / 1000);
+                                unit = 'seconds';
+                            }
+                            
+                            document.getElementById('monitoringInterval').value = interval;
+                            document.getElementById('monitoringUnit').value = unit;
+                            updateMonitoringStatusDisplay(interval, unit);
+                        } else {
+                            // Usar valor padrão se não encontrar no banco
+                            document.getElementById('monitoringInterval').value = 30;
+                            document.getElementById('monitoringUnit').value = 'seconds';
+                            updateMonitoringStatusDisplay(30, 'seconds');
+                        }
+                    } else {
+                        // Usar valor padrão se não encontrar no banco
+                        document.getElementById('monitoringInterval').value = 30;
+                        document.getElementById('monitoringUnit').value = 'seconds';
+                        updateMonitoringStatusDisplay(30, 'seconds');
+                    }
+                } else {
+                    // Usar valor padrão se erro na requisição
+                    document.getElementById('monitoringInterval').value = 30;
+                    document.getElementById('monitoringUnit').value = 'seconds';
+                    updateMonitoringStatusDisplay(30, 'seconds');
+                }
+            } catch (error) {
+                console.log('Usando valor padrão para intervalo de monitoramento:', error.message);
+                document.getElementById('monitoringInterval').value = 30;
+                document.getElementById('monitoringUnit').value = 'seconds';
+                updateMonitoringStatusDisplay(30, 'seconds');
+            }
+            
+            // Atualizar estatísticas
+            document.getElementById('configTotalAdded').textContent = config.currentStats.totalAdded;
+            document.getElementById('configTotalProcessed').textContent = config.currentStats.totalProcessed;
+            document.getElementById('configTotalRejected').textContent = config.currentStats.totalRejected;
+            document.getElementById('configUtilization').textContent = `${config.currentUtilization}%`;
+            
+            // Atualizar status da fila
+            updateQueueStatusDisplay(config.currentUtilization, config.currentStats.totalAdded, config.MAX_ORDERS);
+            
+            // Atualizar modo de processamento
+            updateProcessingModeDisplay(config.CRON_SYNC);
+            
+            // Carregar informações do cron job
+            await loadCronJobInfo();
+        }
+    } catch (error) {
+        console.error('Erro ao carregar configurações:', error);
+        showError('❌ Erro ao carregar configurações');
+    }
+}
+
+// Atualizar display do status de monitoramento
+function updateMonitoringStatusDisplay(interval, unit) {
+    const statusInterval = document.getElementById('monitoringStatusInterval');
+    if (statusInterval) {
+        const unitText = unit === 'seconds' ? 'segundos' : 'minutos';
+        statusInterval.textContent = `${interval} ${unitText}`;
+    }
+}
+
+// Atualizar display do status da fila
+function updateQueueStatusDisplay(utilization, current, max) {
+    const queueFill = document.getElementById('queueStatusFill');
+    const queueText = document.getElementById('queueStatusText');
+    
+    if (queueFill && queueText) {
+        queueFill.style.width = `${utilization}%`;
+        
+        // Aplicar classe de cor baseada na utilização
+        queueFill.className = 'queue-fill';
+        if (utilization < 50) {
+            queueFill.classList.add('low');
+        } else if (utilization < 80) {
+            queueFill.classList.add('medium');
+        } else {
+            queueFill.classList.add('high');
+        }
+        
+        queueText.textContent = `${current}/${max} pedidos (${utilization}%)`;
+    }
+}
+
+// Atualizar display do modo de processamento
+function updateProcessingModeDisplay(cronSync) {
+    const currentMode = document.getElementById('currentProcessingMode');
+    const modeDescription = document.getElementById('processingModeDescription');
+    
+    if (currentMode && modeDescription) {
+        if (cronSync) {
+            currentMode.textContent = 'Cron Job';
+            modeDescription.textContent = 'Processamento sincronizado com cron job para evitar conflitos';
+        } else {
+            currentMode.textContent = 'Imediato';
+            modeDescription.textContent = 'Processamento imediato da fila quando há pedidos disponíveis';
+        }
+    }
+}
+
+// Salvar configurações de monitoramento
+async function saveMonitoringConfig(event) {
+    event.preventDefault();
+    
+    try {
+        const maxOrders = parseInt(document.getElementById('maxOrders').value);
+        const batchSize = parseInt(document.getElementById('batchSize').value);
+        const batchDelay = parseInt(document.getElementById('batchDelay').value);
+        const cronSync = document.getElementById('cronSync').value === 'true';
+        const monitoringInterval = parseInt(document.getElementById('monitoringInterval').value);
+        const monitoringUnit = document.getElementById('monitoringUnit').value;
+        
+        // Validar campos
+        if (!maxOrders || !batchSize || !batchDelay || !monitoringInterval) {
+            showError('Por favor, preencha todos os campos obrigatórios');
+            return;
+        }
+        
+        // Converter intervalo para milissegundos
+        let intervalMs = monitoringInterval;
+        if (monitoringUnit === 'minutes') {
+            intervalMs = monitoringInterval * 60 * 1000;
+        } else {
+            intervalMs = monitoringInterval * 1000;
+        }
+        
+        // Atualizar configurações da fila
+        const response = await fetch('/api/monitoring/queue-config', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                MAX_ORDERS: maxOrders,
+                BATCH_SIZE: batchSize,
+                BATCH_DELAY: batchDelay,
+                CRON_SYNC: cronSync
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Atualizar configuração do intervalo de monitoramento
+            await updateSetting('MONITORING_INTERVAL', intervalMs.toString(), 
+                `Intervalo de monitoramento: ${monitoringInterval} ${monitoringUnit}`);
+            
+            // Reconfigurar cron job para aplicar mudanças
+            try {
+                const cronResponse = await fetch('/api/cron/reconfigure', { method: 'POST' });
+                if (cronResponse.ok) {
+                    console.log('✅ Cron job reconfigurado com sucesso');
+                }
+            } catch (error) {
+                console.log('⚠️ Erro ao reconfigurar cron job:', error.message);
+            }
+            
+            showSuccess('✅ Configurações de monitoramento salvas com sucesso!');
+            closeMonitoringConfigModal();
+            
+            // Recarregar configurações
+            loadMonitoringConfig();
+        } else {
+            showError(`❌ Erro ao salvar: ${result.error}`);
+        }
+    } catch (error) {
+        console.error('Erro ao salvar configurações:', error);
+        showError('❌ Erro ao salvar configurações');
+    }
+}
+
+// Restaurar configurações padrão
+async function resetMonitoringConfig() {
+    if (!confirm('Tem certeza que deseja restaurar as configurações padrão?')) {
+        return;
+    }
+    
+    try {
+        const defaultConfig = {
+            MAX_ORDERS: 1000,
+            BATCH_SIZE: 10,
+            BATCH_DELAY: 2000,
+            CRON_SYNC: true
+        };
+        
+        const response = await fetch('/api/monitoring/queue-config', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(defaultConfig)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Restaurar intervalo padrão (30 segundos)
+            await updateSetting('MONITORING_INTERVAL', '30000', 'Intervalo padrão: 30 segundos');
+            
+            // Reconfigurar cron job para aplicar mudanças
+            try {
+                const cronResponse = await fetch('/api/cron/reconfigure', { method: 'POST' });
+                if (cronResponse.ok) {
+                    console.log('✅ Cron job reconfigurado com sucesso');
+                }
+            } catch (error) {
+                console.log('⚠️ Erro ao reconfigurar cron job:', error.message);
+            }
+            
+            // Atualizar display do intervalo
+            document.getElementById('monitoringInterval').value = 30;
+            document.getElementById('monitoringUnit').value = 'seconds';
+            updateMonitoringStatusDisplay(30, 'seconds');
+            
+            showSuccess('🔄 Configurações restauradas para padrão');
+            loadCurrentMonitoringConfig();
+        } else {
+            showError(`❌ Erro ao restaurar: ${result.error}`);
+        }
+    } catch (error) {
+        console.error('Erro ao restaurar configurações:', error);
+        showError('❌ Erro ao restaurar configurações');
+    }
+}
+
+// Event listeners para configurações de monitoramento
+document.addEventListener('DOMContentLoaded', function() {
+    // Form de configurações de monitoramento
+    const monitoringForm = document.getElementById('monitoringConfigForm');
+    if (monitoringForm) {
+        monitoringForm.addEventListener('submit', saveMonitoringConfig);
+    }
+    
+    // Campos de intervalo de monitoramento
+    const monitoringInterval = document.getElementById('monitoringInterval');
+    const monitoringUnit = document.getElementById('monitoringUnit');
+    
+    if (monitoringInterval && monitoringUnit) {
+        const updateInterval = () => {
+            const interval = monitoringInterval.value;
+            const unit = monitoringUnit.value;
+            updateMonitoringStatusDisplay(interval, unit);
+        };
+        
+        monitoringInterval.addEventListener('input', updateInterval);
+        monitoringUnit.addEventListener('change', updateInterval);
+    }
+});
+
+// Carregar informações do cron job
+async function loadCronJobInfo() {
+    try {
+        // Carregar todas as configurações de uma vez
+        const response = await fetch('/api/settings');
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success && result.data) {
+                // Procurar pela configuração CRON_PATTERN
+                const patternSetting = result.data.find(s => s.key === 'CRON_PATTERN');
+                if (patternSetting) {
+                    document.getElementById('currentCronPattern').textContent = patternSetting.value;
+                }
+                
+                // Procurar pela configuração CRON_TIMEZONE
+                const timezoneSetting = result.data.find(s => s.key === 'CRON_TIMEZONE');
+                if (timezoneSetting) {
+                    document.getElementById('currentCronTimezone').textContent = timezoneSetting.value;
+                }
+                
+                // Calcular próxima execução (aproximada)
+                updateNextCronExecution();
+            }
+        }
+        
+    } catch (error) {
+        console.log('Erro ao carregar informações do cron job:', error.message);
+    }
+}
+
+// Atualizar próxima execução do cron
+function updateNextCronExecution() {
+    try {
+        const pattern = document.getElementById('currentCronPattern').textContent;
+        const timezone = document.getElementById('currentCronTimezone').textContent;
+        
+        if (pattern && pattern !== '*/5 * * * *') {
+            // Cálculo aproximado para padrões simples
+            let nextExecution = 'Calculando...';
+            
+            if (pattern.includes('*/')) {
+                const interval = parseInt(pattern.split('*/')[1].split(' ')[0]);
+                if (pattern.startsWith('*/')) {
+                    // A cada X minutos
+                    const now = new Date();
+                    const next = new Date(now.getTime() + (interval * 60 * 1000));
+                    nextExecution = next.toLocaleTimeString('pt-BR');
+                } else if (pattern.startsWith('0 */')) {
+                    // A cada X horas
+                    const now = new Date();
+                    const next = new Date(now.getTime() + (interval * 60 * 60 * 1000));
+                    nextExecution = next.toLocaleTimeString('pt-BR');
+                }
+            }
+            
+            document.getElementById('nextCronExecution').textContent = nextExecution;
+        } else {
+            document.getElementById('nextCronExecution').textContent = 'A cada 5 minutos';
+        }
+    } catch (error) {
+        document.getElementById('nextCronExecution').textContent = 'Erro no cálculo';
+    }
+}
+
+// Fechar modal ao clicar fora dele
+window.onclick = function(event) {
+    if (event.target.classList.contains('modal')) {
+        event.target.style.display = 'none';
     }
 }

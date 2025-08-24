@@ -8,11 +8,23 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cron = require('node-cron');
 const axios = require('axios');
-const { processOrders, initializeCheckpoint, getCurrentCheckpoint } = require('./services/orderService');
+const { 
+  processOrders, 
+  initializeCheckpoint, 
+  getCurrentCheckpoint,
+  startMonitoring,
+  stopMonitoring,
+  getMonitoringStatus,
+  getPendingOrders,
+  clearPendingOrders,
+  addOrderToQueue,
+  getQueueConfig,
+  updateQueueConfig
+} = require('./services/orderService');
 const databaseService = require('./services/databaseService');
 
 const app = express();
-const PORT = process.env.PORT || 80
+const PORT = process.env.PORT || 80;
 
 // Middleware de segurança
 app.use(helmet({
@@ -45,7 +57,17 @@ app.get('/', (req, res) => {
         cancelledOrders: '/api/cancelled-orders',
         restaurants: '/api/restaurants',
         areas: '/api/areas',
-        settings: '/api/settings'
+        settings: '/api/settings',
+        monitoring: {
+          start: '/api/monitoring/start',
+          stop: '/api/monitoring/stop',
+          status: '/api/monitoring/status',
+          pendingOrders: '/api/monitoring/pending-orders',
+          clearQueue: '/api/monitoring/clear-queue',
+          addOrder: '/api/monitoring/add-order',
+          processQueue: '/api/monitoring/process-queue',
+          queueConfig: '/api/monitoring/queue-config'
+        }
       }
     }
   });
@@ -91,6 +113,36 @@ app.get('/checkpoint', (req, res) => {
     failedStores: global.failedStores || 0,
     uptime: process.uptime()
   });
+});
+
+// Endpoint para resetar estatísticas dos restaurantes
+app.post('/reset-store-stats', (req, res) => {
+  try {
+    // Resetar estatísticas acumuladas
+    global.storeResults = global.storeResults?.map(store => ({
+      ...store,
+      processedSuccesses: 0,
+      processedErrors: 0,
+      totalProcessed: 0,
+      validOrders: 0,
+      skippedOrders: 0,
+      cancelledOrders: 0
+    })) || [];
+    
+    // Resetar contadores globais
+    global.totalProcessed = 0;
+    global.errorCount = 0;
+    
+    res.json({ 
+      success: true, 
+      message: 'Estatísticas dos restaurantes resetadas com sucesso' 
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
 });
 
 // Endpoint para dados do dashboard
@@ -451,25 +503,270 @@ app.post('/test-token-request', async (req, res) => {
   }
 });
 
-// Configuração do cron job usando configurações do banco de dados
-const cronPattern = databaseService.getSetting('CRON_PATTERN') || '*/5 * * * *';
-const cronTimezone = databaseService.getSetting('CRON_TIMEZONE') || 'America/Sao_Paulo';
+// ===== ENDPOINTS DE MONITORAMENTO CONTÍNUO =====
 
-cron.schedule(cronPattern, async () => {
-  console.log('📅 Executando cron job para processar pedidos...');
+// Iniciar monitoramento contínuo
+app.post('/api/monitoring/start', async (req, res) => {
   try {
-    const result = await processOrders();
-    if (!result.success) {
-      console.log('⚠️ Cron job executado com avisos:', result.message);
+    const result = await startMonitoring();
+    if (result) {
+      res.json({ 
+        success: true, 
+        message: 'Monitoramento iniciado com sucesso',
+        status: await getMonitoringStatus()
+      });
     } else {
-      console.log('✅ Cron job executado com sucesso');
+      res.status(400).json({ 
+        success: false, 
+        error: 'Monitoramento já está ativo' 
+      });
     }
   } catch (error) {
-    console.error('❌ Erro crítico no cron job:', error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
   }
-}, {
-  timezone: cronTimezone
 });
+
+// Parar monitoramento contínuo
+app.post('/api/monitoring/stop', async (req, res) => {
+  try {
+    const result = stopMonitoring();
+    if (result) {
+      res.json({ 
+        success: true, 
+        message: 'Monitoramento parado com sucesso',
+        status: await getMonitoringStatus()
+      });
+    } else {
+      res.status(400).json({ 
+        success: false, 
+        error: 'Monitoramento não está ativo' 
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Obter status do monitoramento
+app.get('/api/monitoring/status', async (req, res) => {
+  try {
+    const status = await getMonitoringStatus();
+    res.json({ success: true, data: status });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Obter fila de pedidos pendentes
+app.get('/api/monitoring/pending-orders', (req, res) => {
+  try {
+    const orders = getPendingOrders();
+    res.json({ success: true, data: orders });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Limpar fila de pedidos pendentes
+app.post('/api/monitoring/clear-queue', async (req, res) => {
+  try {
+    const count = clearPendingOrders();
+    res.json({ 
+      success: true, 
+      message: `Fila limpa com sucesso. ${count} pedidos removidos.`,
+      status: await getMonitoringStatus()
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Adicionar pedido manualmente à fila
+app.post('/api/monitoring/add-order', async (req, res) => {
+  try {
+    const { id, store, currentState } = req.body;
+    
+    if (!id) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'ID do pedido é obrigatório' 
+      });
+    }
+    
+    const order = {
+      id,
+      store: store || 'Desconhecido',
+      currentState: currentState || 'READY'
+    };
+    
+    const result = addOrderToQueue(order);
+    if (result) {
+      res.json({ 
+        success: true, 
+        message: 'Pedido adicionado à fila com sucesso',
+        status: await getMonitoringStatus()
+      });
+    } else {
+      res.status(400).json({ 
+        success: false, 
+        error: 'Pedido já está na fila' 
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Processar fila manualmente
+app.post('/api/monitoring/process-queue', async (req, res) => {
+  try {
+    const { startMonitoring, processPendingOrdersQueue } = require('./services/orderService');
+    
+    // Se o monitoramento não estiver ativo, iniciar
+    const monitoringStatus = await getMonitoringStatus();
+    if (!monitoringStatus.isActive) {
+      await startMonitoring();
+    }
+    
+    // Processar fila
+    await processPendingOrdersQueue();
+    
+    res.json({ 
+      success: true, 
+      message: 'Fila processada com sucesso',
+      status: await getMonitoringStatus()
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Obter configurações da fila
+app.get('/api/monitoring/queue-config', (req, res) => {
+  try {
+    const config = getQueueConfig();
+    res.json({ success: true, data: config });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Atualizar configurações da fila
+app.put('/api/monitoring/queue-config', (req, res) => {
+  try {
+    const { MAX_ORDERS, BATCH_SIZE, BATCH_DELAY, CRON_SYNC } = req.body;
+    
+    const newConfig = {};
+    if (MAX_ORDERS !== undefined) newConfig.MAX_ORDERS = parseInt(MAX_ORDERS);
+    if (BATCH_SIZE !== undefined) newConfig.BATCH_SIZE = parseInt(BATCH_SIZE);
+    if (BATCH_DELAY !== undefined) newConfig.BATCH_DELAY = parseInt(BATCH_DELAY);
+    if (CRON_SYNC !== undefined) newConfig.CRON_SYNC = Boolean(CRON_SYNC);
+    
+    const updatedConfig = updateQueueConfig(newConfig);
+    
+    res.json({ 
+      success: true, 
+      message: 'Configurações da fila atualizadas com sucesso',
+      data: updatedConfig
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Reconfigurar cron job
+app.post('/api/cron/reconfigure', (req, res) => {
+  try {
+    setupCronJob();
+    res.json({ 
+      success: true, 
+      message: 'Cron job reconfigurado com sucesso',
+      pattern: databaseService.getSetting('CRON_PATTERN') || '*/5 * * * *',
+      timezone: databaseService.getSetting('CRON_TIMEZONE') || 'America/Sao_Paulo'
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Configuração do cron job usando configurações do banco de dados
+let cronJob = null;
+
+function setupCronJob() {
+  // Parar cron job existente se houver
+  if (cronJob) {
+    cronJob.stop();
+    cronJob = null;
+  }
+  
+  const cronPattern = databaseService.getSetting('CRON_PATTERN') || '*/5 * * * *';
+  const cronTimezone = databaseService.getSetting('CRON_TIMEZONE') || 'America/Sao_Paulo';
+  
+  console.log(`📅 Configurando cron job com padrão: ${cronPattern}`);
+  console.log(`🌍 Timezone: ${cronTimezone}`);
+  
+  try {
+    cronJob = cron.schedule(cronPattern, async () => {
+      console.log('📅 Executando cron job para processar pedidos...');
+      try {
+        const result = await processOrders();
+        if (!result.success) {
+          console.log('⚠️ Cron job executado com avisos:', result.message);
+        } else {
+          console.log('✅ Cron job executado com sucesso');
+        }
+      } catch (error) {
+        console.error('❌ Erro crítico no cron job:', error.message);
+      }
+    }, {
+      timezone: cronTimezone,
+      scheduled: true
+    });
+    
+    console.log('✅ Cron job configurado e iniciado');
+  } catch (error) {
+    console.error('❌ Erro ao configurar cron job:', error.message);
+    // Usar padrão de fallback
+    cronJob = cron.schedule('*/5 * * * *', async () => {
+      console.log('📅 Executando cron job de fallback...');
+      try {
+        await processOrders();
+      } catch (error) {
+        console.error('❌ Erro no cron job de fallback:', error.message);
+      }
+    });
+  }
+}
 
 // Inicialização do servidor
 async function startServer() {
@@ -486,6 +783,24 @@ async function startServer() {
       // Inicializar sistema de checkpoint
       initializeCheckpoint();
       console.log('✅ Sistema de checkpoint inicializado');
+      
+      // Configurar cron job
+      setupCronJob();
+      
+      // Iniciar monitoramento automaticamente após 5 segundos
+      setTimeout(async () => {
+        try {
+          console.log('🔄 Iniciando monitoramento automático...');
+          const result = await startMonitoring();
+          if (result) {
+            console.log('✅ Monitoramento iniciado automaticamente');
+          } else {
+            console.log('⚠️ Monitoramento já estava ativo');
+          }
+        } catch (error) {
+          console.error('❌ Erro ao iniciar monitoramento automático:', error.message);
+        }
+      }, 5000);
       
       // Mostrar estatísticas do banco de dados
       const stats = databaseService.getDatabaseStats();

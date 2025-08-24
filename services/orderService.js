@@ -1,6 +1,30 @@
 const axios = require('axios');
 const databaseService = require('./databaseService');
 
+// Variáveis globais para o sistema de monitoramento
+let monitoringInterval = null;
+let isMonitoring = false;
+let pendingOrders = []; // Fila de pedidos pendentes para processamento
+let lastOrderStates = new Map(); // Cache dos últimos estados dos pedidos
+let processingQueue = false; // Flag para evitar processamento simultâneo
+
+// Configurações da fila
+const QUEUE_CONFIG = {
+  MAX_ORDERS: 1000, // Máximo de pedidos na fila
+  BATCH_SIZE: 10, // Pedidos processados por lote
+  BATCH_DELAY: 2000, // Delay entre lotes (2 segundos)
+  CRON_SYNC: true // Sincronizar com cron job
+};
+
+// Estatísticas da fila
+let queueStats = {
+  totalAdded: 0,
+  totalProcessed: 0,
+  totalRejected: 0,
+  maxReachedCount: 0,
+  lastProcessed: null
+};
+
 /**
  * Get JWT token from database or refresh if needed
  */
@@ -780,7 +804,12 @@ async function processOrders() {
       global.successfulStores = orderResult.successfulStores;
       global.failedStores = orderResult.failedStores;
       global.errorCount = 0;
-      global.storeResults = orderResult.storeResults;
+      
+      // Manter dados acumulados existentes se não houver novos dados
+      if (!global.storeResults || global.storeResults.length === 0) {
+        global.storeResults = orderResult.storeResults;
+      }
+      
       global.lastDuration = duration;
       global.lastStartTime = new Date(startTime).toISOString();
       global.lastEndTime = new Date().toISOString();
@@ -853,18 +882,25 @@ async function processOrders() {
     global.failedStores = orderResult.failedStores;
     global.errorCount = errorCount;
     
-    // Criar storeResults com dados de processamento
+    // Criar storeResults com dados de processamento acumulados
     const processedStoreResults = orderResult.storeResults.map(storeResult => {
       const storeName = storeResult.store;
       const storeOrders = results.filter(r => r.store === storeName);
       const storeSuccesses = storeOrders.filter(r => r.status === 'success').length;
       const storeErrors = storeOrders.filter(r => r.status === 'error').length;
       
+      // Obter dados acumulados anteriores se existirem
+      const previousStoreData = global.storeResults?.find(s => s.store === storeName) || {};
+      
       return {
         ...storeResult,
-        processedSuccesses: storeSuccesses,
-        processedErrors: storeErrors,
-        totalProcessed: storeSuccesses + storeErrors
+        processedSuccesses: (previousStoreData.processedSuccesses || 0) + storeSuccesses,
+        processedErrors: (previousStoreData.processedErrors || 0) + storeErrors,
+        totalProcessed: (previousStoreData.totalProcessed || 0) + storeSuccesses + storeErrors,
+        // Manter dados de validação acumulados
+        validOrders: (previousStoreData.validOrders || 0) + (storeResult.validOrders || 0),
+        skippedOrders: (previousStoreData.skippedOrders || 0) + (storeResult.skippedOrders || 0),
+        cancelledOrders: (previousStoreData.cancelledOrders || 0) + (storeResult.cancelledOrders || 0)
       };
     });
     
@@ -955,11 +991,427 @@ async function processOrders() {
   }
 }
 
+/**
+ * Inicia o monitoramento contínuo de pedidos
+ */
+async function startMonitoring() {
+  if (isMonitoring) {
+    console.log('⚠️ Monitoramento já está ativo');
+    return false;
+  }
+  
+  console.log('🚀 Iniciando monitoramento contínuo de pedidos...');
+  console.log('⏰ Intervalo de verificação: 30 segundos');
+  
+  isMonitoring = true;
+  
+  // Primeira verificação imediata
+  await checkForOrderChanges();
+  
+  // Obter intervalo de monitoramento personalizado (padrão: 30 segundos)
+  let monitoringIntervalMs = 30000; // 30 segundos padrão
+  
+  try {
+    const setting = databaseService.getSetting('MONITORING_INTERVAL');
+    if (setting && setting !== '') {
+      monitoringIntervalMs = parseInt(setting);
+    }
+  } catch (error) {
+    console.log('⚠️ Usando intervalo padrão de 30 segundos');
+  }
+  
+  const intervalSeconds = Math.floor(monitoringIntervalMs / 1000);
+  console.log(`⏰ Monitoramento configurado: ${intervalSeconds} segundos (tempo real)`);
+  
+  monitoringInterval = setInterval(async () => {
+    if (isMonitoring) {
+      await checkForOrderChanges();
+    }
+  }, monitoringIntervalMs);
+  
+  console.log('✅ Monitoramento iniciado com sucesso');
+  return true;
+}
+
+/**
+ * Para o monitoramento contínuo
+ */
+function stopMonitoring() {
+  if (!isMonitoring) {
+    console.log('⚠️ Monitoramento não está ativo');
+    return false;
+  }
+  
+  console.log('🛑 Parando monitoramento contínuo...');
+  
+  if (monitoringInterval) {
+    clearInterval(monitoringInterval);
+    monitoringInterval = null;
+  }
+  
+  isMonitoring = false;
+  console.log('✅ Monitoramento parado com sucesso');
+  return true;
+}
+
+/**
+ * Verifica mudanças nos status dos pedidos
+ */
+async function checkForOrderChanges() {
+  if (!isMonitoring) {
+    return;
+  }
+  
+  try {
+    console.log('\n🔍 Verificando mudanças nos status dos pedidos...');
+    const startTime = Date.now();
+    
+    // Obter token
+    const token = await getToken();
+    
+    // Buscar pedidos atuais
+    const orderResult = await getOrderIds(token, global.lastCheckpoint);
+    const currentOrders = orderResult.allOrders || [];
+    
+    console.log(`📊 Verificação: ${currentOrders.length} pedidos encontrados`);
+    
+    // Verificar mudanças de status
+    const newPendingOrders = [];
+    
+    for (const order of currentOrders) {
+      const orderId = order.id;
+      const currentState = order.currentState;
+      const lastState = lastOrderStates.get(orderId);
+      
+      // Se é um pedido novo ou o status mudou
+      if (!lastState || lastState !== currentState) {
+        console.log(`🔄 Status alterado para pedido ${orderId}: ${lastState || 'NOVO'} → ${currentState}`);
+        
+        // Atualizar cache
+        lastOrderStates.set(orderId, currentState);
+        
+        // Se o status é READY, adicionar à fila de processamento
+        if (currentState === 'READY') {
+          // Verificar se a fila está cheia
+          if (pendingOrders.length >= QUEUE_CONFIG.MAX_ORDERS) {
+            console.log(`⚠️ Fila cheia (${pendingOrders.length}/${QUEUE_CONFIG.MAX_ORDERS}). Pedido ${orderId} rejeitado.`);
+            queueStats.totalRejected++;
+            queueStats.maxReachedCount++;
+            continue; // Pular este pedido
+          }
+          
+          const orderWithStore = {
+            ...order,
+            store: order.store || 'Desconhecido',
+            statusChange: {
+              from: lastState || 'NOVO',
+              to: currentState,
+              timestamp: new Date().toISOString()
+            }
+          };
+          
+          // Verificar se já não está na fila
+          const alreadyInQueue = pendingOrders.find(p => p.id === orderId);
+          if (!alreadyInQueue) {
+            pendingOrders.push(orderWithStore);
+            newPendingOrders.push(orderWithStore);
+            queueStats.totalAdded++;
+            console.log(`✅ Pedido ${orderId} adicionado à fila de processamento (${pendingOrders.length}/${QUEUE_CONFIG.MAX_ORDERS})`);
+          }
+        }
+      }
+    }
+    
+    const checkTime = Date.now() - startTime;
+    console.log(`⏱️ Verificação concluída em ${checkTime}ms`);
+    console.log(`📋 Novos pedidos na fila: ${newPendingOrders.length}`);
+    console.log(`📋 Total na fila: ${pendingOrders.length}`);
+    
+    // Se há pedidos na fila, apenas logar (processamento será feito pelo cron)
+    if (pendingOrders.length > 0) {
+      console.log(`📋 ${pendingOrders.length} pedidos aguardando processamento pelo cron job`);
+    }
+    
+  } catch (error) {
+    console.error('❌ Erro na verificação de mudanças:', error.message);
+  }
+}
+
+/**
+ * Processa a fila de pedidos pendentes
+ */
+async function processPendingOrdersQueue() {
+  if (processingQueue) {
+    console.log('⚠️ Processamento da fila já está em andamento');
+    return;
+  }
+  
+  if (pendingOrders.length === 0) {
+    console.log('ℹ️ Nenhum pedido na fila para processar');
+    return;
+  }
+  
+  processingQueue = true;
+  console.log(`\n🚀 PROCESSANDO FILA DE ${pendingOrders.length} PEDIDOS`);
+  
+  try {
+    // Obter token
+    const token = await getToken();
+    
+    const results = [];
+    let successCount = 0;
+    let errorCount = 0;
+    
+    // Processar pedidos em lote usando configurações da fila
+    const batchSize = QUEUE_CONFIG.BATCH_SIZE;
+    const batches = Math.ceil(pendingOrders.length / batchSize);
+    
+    for (let batch = 0; batch < batches; batch++) {
+      const startIndex = batch * batchSize;
+      const endIndex = Math.min(startIndex + batchSize, pendingOrders.length);
+      const currentBatch = pendingOrders.slice(startIndex, endIndex);
+      
+      console.log(`\n📦 Processando lote ${batch + 1}/${batches} (${currentBatch.length} pedidos)`);
+      
+      for (const order of currentBatch) {
+        try {
+          console.log(`🔄 Processando pedido ${order.id} (Loja: ${order.store})...`);
+          console.log(`   Status: ${order.statusChange.from} → ${order.statusChange.to}`);
+          
+          const response = await sendFullReady(token, order.id);
+          results.push({ 
+            id: order.id, 
+            status: 'success', 
+            response, 
+            store: order.store,
+            statusChange: order.statusChange
+          });
+          successCount++;
+          console.log(`✅ Pedido ${order.id} processado com sucesso`);
+          
+        } catch (error) {
+          console.error(`❌ Erro ao processar pedido ${order.id}:`, error.message);
+          results.push({ 
+            id: order.id, 
+            status: 'error', 
+            error: error.message, 
+            store: order.store,
+            statusChange: order.statusChange
+          });
+          errorCount++;
+        }
+      }
+      
+      // Pausa entre lotes usando configuração da fila
+      if (batch < batches - 1) {
+        console.log(`⏳ Aguardando ${QUEUE_CONFIG.BATCH_DELAY}ms antes do próximo lote...`);
+        await new Promise(resolve => setTimeout(resolve, QUEUE_CONFIG.BATCH_DELAY));
+      }
+    }
+    
+    // Remover pedidos processados da fila
+    const processedIds = results.map(r => r.id);
+    pendingOrders = pendingOrders.filter(order => !processedIds.includes(order.id));
+    
+    // Atualizar estatísticas da fila
+    queueStats.totalProcessed += successCount;
+    queueStats.lastProcessed = new Date().toISOString();
+    
+    console.log(`\n🎯 PROCESSAMENTO DA FILA CONCLUÍDO`);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`✅ Sucessos: ${successCount}`);
+    console.log(`❌ Erros: ${errorCount}`);
+    console.log(`📦 Total processado: ${results.length}`);
+    console.log(`📋 Restantes na fila: ${pendingOrders.length}/${QUEUE_CONFIG.MAX_ORDERS}`);
+    console.log(`📊 Estatísticas da fila:`);
+    console.log(`   - Total adicionado: ${queueStats.totalAdded}`);
+    console.log(`   - Total processado: ${queueStats.totalProcessed}`);
+    console.log(`   - Total rejeitado: ${queueStats.totalRejected}`);
+    console.log(`   - Vezes que fila ficou cheia: ${queueStats.maxReachedCount}`);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    
+    // Atualizar estatísticas globais
+    global.lastQueueProcessed = new Date().toISOString();
+    global.totalQueueProcessed = (global.totalQueueProcessed || 0) + successCount;
+    global.queueErrorCount = (global.queueErrorCount || 0) + errorCount;
+    
+  } catch (error) {
+    console.error('💥 Erro crítico no processamento da fila:', error.message);
+  } finally {
+    processingQueue = false;
+  }
+}
+
+/**
+ * Obtém o status atual do monitoramento
+ */
+async function getMonitoringStatus() {
+  // Obter intervalo de monitoramento personalizado
+  let intervalText = 'Não configurado';
+  let intervalMs = 30000; // padrão
+  
+  try {
+    const setting = databaseService.getSetting('MONITORING_INTERVAL');
+    if (setting && setting !== '') {
+      intervalMs = parseInt(setting);
+      const intervalSeconds = Math.floor(intervalMs / 1000);
+      intervalText = `${intervalSeconds} segundos (tempo real)`;
+    } else {
+      intervalText = '30 segundos (tempo real)';
+    }
+  } catch (error) {
+    intervalText = '30 segundos (tempo real)';
+  }
+  
+  return {
+    isActive: isMonitoring,
+    pendingOrdersCount: pendingOrders.length,
+    maxOrders: QUEUE_CONFIG.MAX_ORDERS,
+    isProcessing: processingQueue,
+    lastOrderStatesCount: lastOrderStates.size,
+    interval: monitoringInterval ? intervalText : 'Não configurado',
+    cronSync: QUEUE_CONFIG.CRON_SYNC,
+    processingMode: 'Cron Job',
+    queueStats: {
+      ...queueStats,
+      utilization: Math.round((pendingOrders.length / QUEUE_CONFIG.MAX_ORDERS) * 100)
+    }
+  };
+}
+
+/**
+ * Obtém a fila de pedidos pendentes
+ */
+function getPendingOrders() {
+  return pendingOrders.map(order => ({
+    id: order.id,
+    store: order.store,
+    currentState: order.currentState,
+    statusChange: order.statusChange,
+    addedToQueue: order.addedToQueue || new Date().toISOString()
+  }));
+}
+
+/**
+ * Limpa a fila de pedidos pendentes
+ */
+function clearPendingOrders() {
+  const count = pendingOrders.length;
+  pendingOrders = [];
+  lastOrderStates.clear();
+  
+  // Resetar estatísticas da fila
+  queueStats = {
+    totalAdded: 0,
+    totalProcessed: 0,
+    totalRejected: 0,
+    maxReachedCount: 0,
+    lastProcessed: null
+  };
+  
+  console.log(`🧹 Fila de pedidos limpa: ${count} pedidos removidos`);
+  console.log(`📊 Estatísticas da fila resetadas`);
+  return count;
+}
+
+/**
+ * Adiciona um pedido manualmente à fila
+ */
+function addOrderToQueue(order) {
+  if (!order || !order.id) {
+    throw new Error('Pedido inválido: deve ter ID');
+  }
+  
+  // Verificar se a fila está cheia
+  if (pendingOrders.length >= QUEUE_CONFIG.MAX_ORDERS) {
+    console.log(`⚠️ Fila cheia (${pendingOrders.length}/${QUEUE_CONFIG.MAX_ORDERS}). Pedido ${order.id} rejeitado.`);
+    queueStats.totalRejected++;
+    queueStats.maxReachedCount++;
+    return false;
+  }
+  
+  // Verificar se já está na fila
+  const alreadyInQueue = pendingOrders.find(p => p.id === order.id);
+  if (alreadyInQueue) {
+    console.log(`⚠️ Pedido ${order.id} já está na fila`);
+    return false;
+  }
+  
+  const orderWithMetadata = {
+    ...order,
+    store: order.store || 'Desconhecido',
+    statusChange: {
+      from: 'MANUAL',
+      to: order.currentState || 'READY',
+      timestamp: new Date().toISOString()
+    },
+    addedToQueue: new Date().toISOString()
+  };
+  
+  pendingOrders.push(orderWithMetadata);
+  queueStats.totalAdded++;
+  console.log(`✅ Pedido ${order.id} adicionado manualmente à fila (${pendingOrders.length}/${QUEUE_CONFIG.MAX_ORDERS})`);
+  
+  // Se não está sendo processada, iniciar processamento
+  if (!processingQueue) {
+    processPendingOrdersQueue();
+  }
+  
+  return true;
+}
+
+/**
+ * Obtém as configurações da fila
+ */
+function getQueueConfig() {
+  return {
+    ...QUEUE_CONFIG,
+    currentStats: queueStats,
+    currentUtilization: Math.round((pendingOrders.length / QUEUE_CONFIG.MAX_ORDERS) * 100)
+  };
+}
+
+/**
+ * Atualiza as configurações da fila
+ */
+function updateQueueConfig(newConfig) {
+  if (newConfig.MAX_ORDERS && newConfig.MAX_ORDERS > 0) {
+    QUEUE_CONFIG.MAX_ORDERS = newConfig.MAX_ORDERS;
+  }
+  
+  if (newConfig.BATCH_SIZE && newConfig.BATCH_SIZE > 0) {
+    QUEUE_CONFIG.BATCH_SIZE = newConfig.BATCH_SIZE;
+  }
+  
+  if (newConfig.BATCH_DELAY && newConfig.BATCH_DELAY >= 0) {
+    QUEUE_CONFIG.BATCH_DELAY = newConfig.BATCH_DELAY;
+  }
+  
+  if (typeof newConfig.CRON_SYNC === 'boolean') {
+    QUEUE_CONFIG.CRON_SYNC = newConfig.CRON_SYNC;
+  }
+  
+  console.log('⚙️ Configurações da fila atualizadas:', QUEUE_CONFIG);
+  return QUEUE_CONFIG;
+}
+
 module.exports = {
   processOrders,
   getToken,
   getOrderIds,
   sendFullReady,
   initializeCheckpoint,
-  getCurrentCheckpoint
+  getCurrentCheckpoint,
+  // Novas funções de monitoramento
+  startMonitoring,
+  stopMonitoring,
+  checkForOrderChanges,
+  processPendingOrdersQueue,
+  getMonitoringStatus,
+  getPendingOrders,
+  clearPendingOrders,
+  addOrderToQueue,
+  getQueueConfig,
+  updateQueueConfig
 };
+

@@ -202,6 +202,229 @@
             margin-top: 20px;
         }
 
+        /* Estilos para monitoramento */
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .status-item.active {
+            background: #d4edda;
+            border-left: 3px solid #28a745;
+        }
+
+        .status-item.inactive {
+            background: #f8d7da;
+            border-left: 3px solid #dc3545;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #28a745;
+            margin-right: 8px;
+        }
+
+        .status-item.inactive .status-dot {
+            background: #dc3545;
+        }
+
+        .status-label {
+            font-weight: 500;
+            color: #555;
+        }
+
+        .status-value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        /* Barra de utilização da fila */
+        .queue-utilization {
+            margin: 10px 0;
+        }
+
+        .utilization-bar {
+            width: 100%;
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .utilization-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .utilization-fill.low {
+            background: #28a745;
+        }
+
+        .utilization-fill.medium {
+            background: #ffc107;
+        }
+
+        .utilization-fill.high {
+            background: #dc3545;
+        }
+
+        .monitoring-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex: 1;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        /* Estilos para fila de pedidos */
+        .queue-section {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+
+        .queue-controls, .store-controls {
+            display: flex;
+            gap: 10px;
+            margin-left: auto;
+        }
+
+        .queue-container {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .queue-item {
+            display: grid;
+            grid-template-columns: 1fr 1fr 2fr 1fr;
+            gap: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #17a2b8;
+            align-items: center;
+        }
+
+        .order-id {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .order-store {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .order-status {
+            font-size: 0.9rem;
+            color: #17a2b8;
+            font-weight: 500;
+        }
+
+        .order-time {
+            font-size: 0.8rem;
+            color: #888;
+            text-align: right;
+        }
+
+        .empty-queue {
+            text-align: center;
+            color: #666;
+            padding: 40px;
+            font-style: italic;
+        }
+
+        /* Notificações */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .notification.success {
+            background: #28a745;
+        }
+
+        .notification.error {
+            background: #dc3545;
+        }
+
+        .notification.info {
+            background: #17a2b8;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
         .loading {
             text-align: center;
             color: white;
@@ -224,6 +447,227 @@
             100% { transform: rotate(360deg); }
         }
 
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.05); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        /* Modal de Configurações */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            overflow-y: auto;
+            padding: 20px 0;
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 1% auto;
+            padding: 0;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            border-radius: 15px 15px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.3rem;
+        }
+
+        .close {
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.3s ease;
+        }
+
+        .close:hover {
+            opacity: 0.7;
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+            max-height: calc(85vh - 140px); /* Altura máxima menos header e footer */
+            scrollbar-width: thin;
+            scrollbar-color: #888 #f1f1f1;
+        }
+
+        .config-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .config-section h4 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 1.1rem;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: #666;
+            font-size: 0.85rem;
+            font-style: italic;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .modal-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #eee;
+            background: #f8f9fa;
+            border-radius: 0 0 15px 15px;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-shrink: 0;
+            position: sticky;
+            bottom: 0;
+            z-index: 10;
+        }
+
+        .modal-footer .btn {
+            margin: 0;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+        }
+
+        /* Scrollbar personalizada */
+        .modal-body::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .modal-body::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .modal-body::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .modal-body::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Indicador de scroll para Firefox */
+        .modal-body {
+            scrollbar-width: thin;
+            scrollbar-color: #888 #f1f1f1;
+        }
+
+        /* Garantir que o scroll seja sempre visível */
+        .modal-body:after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 8px;
+            background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.1), transparent);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-body:hover:after {
+            opacity: 1;
+        }
+
+        /* Responsividade Mobile */
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 2rem;
@@ -235,6 +679,82 @@
             
             .store-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .modal-content {
+                width: 95%;
+                margin: 5% auto;
+                max-height: 90vh;
+            }
+
+            .modal-body {
+                padding: 15px;
+                max-height: calc(90vh - 120px);
+            }
+
+            .config-section {
+                padding: 15px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .modal-footer {
+                flex-direction: column;
+            }
+
+            .modal-footer .btn {
+                width: 100%;
+            }
+
+            .queue-controls {
+                flex-direction: column;
+                margin-top: 15px;
+            }
+
+            .monitoring-controls {
+                flex-direction: column;
+            }
+
+            .queue-item {
+                grid-template-columns: 1fr;
+                gap: 10px;
+                text-align: center;
+            }
+
+            .order-time {
+                text-align: center;
+            }
+
+            .card-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .queue-controls {
+                margin-left: 0;
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 10px;
+            }
+
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .status-card {
+                padding: 20px;
+            }
+
+            .btn {
+                padding: 12px 16px;
+                font-size: 1rem;
             }
         }
     </style>
@@ -251,9 +771,22 @@
             </div>
         </div>
 
-        <button class="refresh-btn" onclick="refreshData()">
-            🔄 Atualizar Dados
-        </button>
+        <div style="display: flex; gap: 15px; justify-content: center; margin-bottom: 20px;">
+            <button class="refresh-btn" onclick="refreshData()">
+                🔄 Atualizar Dados
+            </button>
+            <button class="refresh-btn" onclick="forceRefresh()" style="background: linear-gradient(45deg, #28a745, #20c997);">
+                🚀 Forçar Atualização
+            </button>
+        </div>
+        <div style="text-align: center; margin-bottom: 20px; color: white; opacity: 0.8;">
+            <span id="autoUpdateStatus">🔄 Atualização automática a cada 10 segundos</span>
+            <div style="margin-top: 10px;">
+                <span id="liveIndicator" style="background: #28a745; color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.9rem; animation: pulse 2s infinite;">
+                    🔴 AO VIVO
+                </span>
+            </div>
+        </div>
 
         <div id="loading" class="loading">
             <div class="spinner"></div>
@@ -332,20 +865,168 @@
                         <span class="metric-value info" id="uptime">-</span>
                     </div>
                 </div>
-            </div>
 
+                <div class="status-card">
+                    <div class="card-header">
+                        <div class="card-icon">🔄</div>
+                        <div class="card-title">Monitoramento Contínuo</div>
+                    </div>
+                    <div id="monitoringStatus">
+                        <div class="status-item inactive">
+                            <span class="status-dot"></span>
+                            🔴 Inativo
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Pedidos na fila:</span>
+                            <span class="status-value">0/1000</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Utilização:</span>
+                            <span class="status-value">0%</span>
+                        </div>
+                        <div class="queue-utilization">
+                            <div class="utilization-bar">
+                                <div class="utilization-fill" id="queueUtilization"></div>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Processando:</span>
+                            <span class="status-value">⏸️ Não</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Intervalo:</span>
+                            <span class="status-value">Não configurado</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Modo de Processamento:</span>
+                            <span class="status-value">Cron Job</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Sincronizado com Cron:</span>
+                            <span class="status-value">✅ Sim</span>
+                        </div>
+                    </div>
+                    <div class="monitoring-controls">
+                        <button id="startMonitoringBtn" class="btn btn-success" onclick="startMonitoring()">
+                            🚀 Iniciar Monitoramento
+                        </button>
+                        <button id="stopMonitoringBtn" class="btn btn-danger" onclick="stopMonitoring()" disabled>
+                            🛑 Parar Monitoramento
+                        </button>
+                        <!-- <button class="btn btn-info" onclick="openQueueConfigModal()">
+                            ⚙️ Configurações
+                        </button> -->
+                    </div>
+                </div>
+            </div>
+            <div class="queue-section">
+                <div class="card-header">
+                    <div class="card-icon">📋</div>
+                    <div class="card-title">Fila de Pedidos Pendentes</div>
+                    <div class="queue-controls">
+                        <button class="btn btn-warning" onclick="clearQueue()">
+                            🧹 Limpar Fila
+                        </button>
+                        <button class="btn btn-info" onclick="processQueue()">
+                            🚀 Processar Fila
+                        </button>
+                    </div>
+                </div>
+                <div id="pendingOrdersQueue" class="queue-container">
+                    <div class="empty-queue">Nenhum pedido na fila</div>
+                </div>
+            </div>
             <div class="store-summary">
                 <div class="card-header">
                     <div class="card-icon">🏪</div>
-                    <div class="card-title">Resumo por Restaurante</div>
+                    <div class="card-title">
+                        Resumo por Restaurante
+                        <span style="font-size: 0.8rem; color: #666; font-weight: normal; margin-left: 10px;">
+                            📊 Dados acumulados
+                        </span>
+                    </div>
+                    <div class="store-controls">
+                        <button class="btn btn-warning" onclick="resetStoreStats()" title="Resetar estatísticas acumuladas">
+                            🔄 Resetar Estatísticas
+                        </button>
+                    </div>
                 </div>
                 <div class="store-grid" id="storeGrid">
                     <!-- Restaurantes serão inseridos aqui dinamicamente -->
                 </div>
             </div>
 
+            
+
             <div class="timestamp">
                 Última atualização: <span id="lastUpdate">-</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Configurações da Fila -->
+    <div id="queueConfigModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚙️ Configurações da Fila</h3>
+                <span class="close" onclick="closeQueueConfigModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="config-section">
+                    <h4>📊 Configurações da Fila</h4>
+                    <div class="form-group">
+                        <label for="maxOrders">Limite Máximo de Pedidos:</label>
+                        <input type="number" id="maxOrders" min="100" max="10000" step="100" value="1000">
+                        <small>Máximo de pedidos que podem estar na fila simultaneamente</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="batchSize">Pedidos por Lote:</label>
+                        <input type="number" id="batchSize" min="1" max="50" step="1" value="10">
+                        <small>Quantos pedidos processar por vez</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="batchDelay">Delay entre Lotes (ms):</label>
+                        <input type="number" id="batchDelay" min="0" max="10000" step="100" value="2000">
+                        <small>Pausa entre processamento de lotes</small>
+                    </div>
+                </div>
+                <div class="config-section">
+                    <h4>⏰ Configurações de Processamento</h4>
+                    <div class="form-group">
+                        <label for="cronSync">Sincronizar com Cron Job:</label>
+                        <select id="cronSync">
+                            <option value="true">✅ Sim - Processar apenas quando cron executar</option>
+                            <option value="false">❌ Não - Processar imediatamente</option>
+                        </select>
+                        <small>Controla se o processamento da fila deve aguardar o cron job</small>
+                    </div>
+                </div>
+                <div class="config-section">
+                    <h4>📈 Estatísticas Atuais</h4>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Total Adicionado:</span>
+                            <span class="stat-value" id="configTotalAdded">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Processado:</span>
+                            <span class="stat-value" id="configTotalProcessed">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Rejeitado:</span>
+                            <span class="stat-value" id="configTotalRejected">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Utilização:</span>
+                            <span class="stat-value" id="configUtilization">0%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeQueueConfigModal()">❌ Cancelar</button>
+                <button class="btn btn-primary" onclick="saveQueueConfig()">💾 Salvar Configurações</button>
+                <button class="btn btn-warning" onclick="resetQueueConfig()">🔄 Restaurar Padrões</button>
             </div>
         </div>
     </div>

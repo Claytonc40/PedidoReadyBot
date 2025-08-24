@@ -1,4 +1,7 @@
 let refreshInterval;
+let monitoringInterval;
+
+// Função para formatar timestamp
 
 // Função para formatar timestamp
 function formatTimestamp(timestamp) {
@@ -139,7 +142,7 @@ function updateStoreGrid(storeResults) {
             </div>
             <div style="margin-top: 10px; font-size: 0.9rem; color: #666;">
                 ${storeData.totalProcessed > 0 ? 
-                    `📦 Total processado: ${storeData.totalProcessed}` : 
+                    `📦 Total acumulado: ${storeData.totalProcessed}` : 
                     (storeData.status ? '✅ Funcionando' : '❌ Com problemas')
                 }
             </div>
@@ -150,10 +153,40 @@ function updateStoreGrid(storeResults) {
                     ${storeData.cancelledOrders !== undefined ? `❌ Cancelados: ${storeData.cancelledOrders}` : ''}
                 </div>
             ` : ''}
+            <div style="margin-top: 8px; font-size: 0.8rem; color: #999; font-style: italic;">
+                📊 Estatísticas acumuladas desde o início
+            </div>
+            <div style="margin-top: 5px; font-size: 0.75rem; color: #aaa;">
+                Status atual: ${storeData.status ? '✅ Ativo' : '❌ Inativo'}
+            </div>
         `;
         
         storeGrid.appendChild(storeCard);
     });
+}
+
+// Função para resetar estatísticas dos restaurantes
+async function resetStoreStats() {
+    if (!confirm('Tem certeza que deseja resetar todas as estatísticas acumuladas dos restaurantes? Esta ação não pode ser desfeita.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/reset-store-stats', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('✅ Estatísticas resetadas com sucesso!', 'success');
+            // Recarregar dados após reset
+            setTimeout(() => {
+                fetchData();
+            }, 1000);
+        } else {
+            showNotification('❌ Erro ao resetar estatísticas: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showNotification('❌ Erro ao resetar estatísticas: ' + error.message, 'error');
+    }
 }
 
 // Função para buscar dados
@@ -196,20 +229,445 @@ function refreshData() {
         <div class="spinner"></div>
         Atualizando dados...
     `;
-    fetchData();
+    
+    // Atualizar tudo de uma vez
+    Promise.all([
+        fetchData(),
+        updateMonitoringStatus(),
+        updatePendingOrders()
+    ]).then(() => {
+        updateAutoUpdateStatus();
+    });
 }
 
 // Inicializar
 document.addEventListener('DOMContentLoaded', function() {
     fetchData();
     
-    // Atualizar automaticamente a cada 30 segundos
-    refreshInterval = setInterval(fetchData, 30000);
+    // Atualizar automaticamente a cada 10 segundos para melhor tempo real
+    refreshInterval = setInterval(() => {
+        fetchData();
+        updateMonitoringStatus();
+        updatePendingOrders();
+        updateAutoUpdateStatus();
+    }, 10000);
+    
+    // Inicializar status do monitoramento
+    updateMonitoringStatus();
+    updatePendingOrders();
+    updateAutoUpdateStatus();
 });
+
+// Função para atualizar status da atualização automática
+function updateAutoUpdateStatus() {
+    const statusElement = document.getElementById('autoUpdateStatus');
+    const liveIndicator = document.getElementById('liveIndicator');
+    
+    if (statusElement) {
+        const now = new Date();
+        statusElement.innerHTML = `🔄 Atualização automática a cada 10 segundos | Última: ${now.toLocaleTimeString('pt-BR')}`;
+    }
+    
+    // Piscar o indicador ao vivo para mostrar atividade
+    if (liveIndicator) {
+        liveIndicator.style.animation = 'none';
+        liveIndicator.offsetHeight; // Trigger reflow
+        liveIndicator.style.animation = 'pulse 2s infinite';
+    }
+}
 
 // Limpar intervalo quando a página for fechada
 window.addEventListener('beforeunload', function() {
     if (refreshInterval) {
         clearInterval(refreshInterval);
     }
+    if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+    }
 });
+
+// ===== FUNÇÕES DE MONITORAMENTO =====
+
+// Função para iniciar monitoramento
+async function startMonitoring() {
+    try {
+        const response = await fetch('/api/monitoring/start', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('✅ Monitoramento iniciado com sucesso', 'success');
+            updateMonitoringStatus(result.status);
+            startMonitoringUpdates();
+        } else {
+            showNotification(`❌ Erro ao iniciar monitoramento: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao iniciar monitoramento:', error);
+        showNotification('❌ Erro ao iniciar monitoramento', 'error');
+    }
+}
+
+// Função para parar monitoramento
+async function stopMonitoring() {
+    try {
+        const response = await fetch('/api/monitoring/stop', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('🛑 Monitoramento parado com sucesso', 'success');
+            updateMonitoringStatus(result.status);
+            stopMonitoringUpdates();
+        } else {
+            showNotification(`❌ Erro ao parar monitoramento: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao parar monitoramento:', error);
+        showNotification('❌ Erro ao parar monitoramento', 'error');
+    }
+}
+
+// Função para atualizar status do monitoramento
+async function updateMonitoringStatus(status = null) {
+    try {
+        if (!status) {
+            const response = await fetch('/api/monitoring/status');
+            const result = await response.json();
+            if (result.success) {
+                status = result.data;
+            }
+        }
+        
+        if (status) {
+            const statusElement = document.getElementById('monitoringStatus');
+            const startBtn = document.getElementById('startMonitoringBtn');
+            const stopBtn = document.getElementById('stopMonitoringBtn');
+            
+                         if (statusElement) {
+                 statusElement.innerHTML = `
+                     <div class="status-item ${status.isActive ? 'active' : 'inactive'}">
+                         <span class="status-dot"></span>
+                         ${status.isActive ? '🟢 Ativo' : '🔴 Inativo'}
+                     </div>
+                     <div class="status-item">
+                         <span class="status-label">Pedidos na fila:</span>
+                         <span class="status-value">${status.pendingOrdersCount}/${status.maxOrders || '∞'}</span>
+                     </div>
+                     <div class="status-item">
+                         <span class="status-label">Utilização:</span>
+                         <span class="status-value">${status.queueStats?.utilization || 0}%</span>
+                     </div>
+                     <div class="queue-utilization">
+                         <div class="utilization-bar">
+                             <div class="utilization-fill" id="queueUtilization"></div>
+                         </div>
+                     </div>
+                     <div class="status-item">
+                         <span class="status-label">Processando:</span>
+                         <span class="status-value">${status.isProcessing ? '🔄 Sim' : '⏸️ Não'}</span>
+                     </div>
+                     <div class="status-item">
+                         <span class="status-label">Intervalo:</span>
+                         <span class="status-value">${status.interval}</span>
+                     </div>
+                     <div class="status-item">
+                         <span class="status-label">Modo de Processamento:</span>
+                         <span class="status-value">${status.processingMode || 'Cron Job'}</span>
+                     </div>
+                     <div class="status-item">
+                         <span class="status-label">Sincronizado com Cron:</span>
+                         <span class="status-value">${status.cronSync ? '✅ Sim' : '❌ Não'}</span>
+                     </div>
+                 `;
+                 
+                 // Atualizar barra de utilização
+                 updateQueueUtilizationBar(status.queueStats?.utilization || 0);
+             }
+            
+            if (startBtn) startBtn.disabled = status.isActive;
+            if (stopBtn) stopBtn.disabled = !status.isActive;
+        }
+    } catch (error) {
+        console.error('Erro ao atualizar status do monitoramento:', error);
+    }
+}
+
+// Função para atualizar fila de pedidos
+async function updatePendingOrders() {
+    try {
+        const response = await fetch('/api/monitoring/pending-orders');
+        const result = await response.json();
+        
+        if (result.success) {
+            const queueElement = document.getElementById('pendingOrdersQueue');
+            if (queueElement) {
+                if (result.data.length === 0) {
+                    queueElement.innerHTML = '<div class="empty-queue">Nenhum pedido na fila</div>';
+                } else {
+                    queueElement.innerHTML = result.data.map(order => `
+                        <div class="queue-item">
+                            <div class="order-id">📦 ${order.id}</div>
+                            <div class="order-store">🏪 ${order.store}</div>
+                            <div class="order-status">
+                                ${order.statusChange.from} → ${order.statusChange.to}
+                            </div>
+                            <div class="order-time">
+                                ${formatTimestamp(order.addedToQueue)}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Erro ao atualizar fila de pedidos:', error);
+    }
+}
+
+// Função para limpar fila
+async function clearQueue() {
+    if (!confirm('Tem certeza que deseja limpar a fila de pedidos?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/monitoring/clear-queue', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification(result.message, 'success');
+            updateMonitoringStatus(result.status);
+            updatePendingOrders();
+        } else {
+            showNotification(`❌ Erro ao limpar fila: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao limpar fila:', error);
+        showNotification('❌ Erro ao limpar fila', 'error');
+    }
+}
+
+// Função para processar fila manualmente
+async function processQueue() {
+    try {
+        const response = await fetch('/api/monitoring/process-queue', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('🚀 Fila processada com sucesso', 'success');
+            updateMonitoringStatus(result.status);
+            updatePendingOrders();
+        } else {
+            showNotification(`❌ Erro ao processar fila: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao processar fila:', error);
+        showNotification('❌ Erro ao processar fila', 'error');
+    }
+}
+
+// Função para iniciar atualizações do monitoramento
+function startMonitoringUpdates() {
+    if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+    }
+    
+    // Atualizar a cada 5 segundos quando ativo
+    monitoringInterval = setInterval(async () => {
+        await updateMonitoringStatus();
+        await updatePendingOrders();
+    }, 5000);
+}
+
+// Função para parar atualizações do monitoramento
+function stopMonitoringUpdates() {
+    if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+        monitoringInterval = null;
+    }
+}
+
+// Função para atualizar barra de utilização da fila
+function updateQueueUtilizationBar(utilization) {
+    const utilizationBar = document.getElementById('queueUtilization');
+    if (utilizationBar) {
+        utilizationBar.style.width = `${utilization}%`;
+        
+        // Aplicar classe de cor baseada na utilização
+        utilizationBar.className = 'utilization-fill';
+        if (utilization < 50) {
+            utilizationBar.classList.add('low');
+        } else if (utilization < 80) {
+            utilizationBar.classList.add('medium');
+        } else {
+            utilizationBar.classList.add('high');
+        }
+    }
+}
+
+// Função para mostrar notificações
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    // Remover após 5 segundos
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 5000);
+}
+
+// ===== FUNÇÕES DO MODAL DE CONFIGURAÇÕES =====
+
+// Abrir modal de configurações
+function openQueueConfigModal() {
+    const modal = document.getElementById('queueConfigModal');
+    if (modal) {
+        modal.style.display = 'block';
+        loadCurrentConfig();
+    }
+}
+
+// Fechar modal de configurações
+function closeQueueConfigModal() {
+    const modal = document.getElementById('queueConfigModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Carregar configurações atuais
+async function loadCurrentConfig() {
+    try {
+        const response = await fetch('/api/monitoring/queue-config');
+        const result = await response.json();
+        
+        if (result.success) {
+            const config = result.data;
+            
+            // Preencher campos do formulário
+            document.getElementById('maxOrders').value = config.MAX_ORDERS;
+            document.getElementById('batchSize').value = config.BATCH_SIZE;
+            document.getElementById('batchDelay').value = config.BATCH_DELAY;
+            document.getElementById('cronSync').value = config.CRON_SYNC.toString();
+            
+            // Atualizar estatísticas
+            document.getElementById('configTotalAdded').textContent = config.currentStats.totalAdded;
+            document.getElementById('configTotalProcessed').textContent = config.currentStats.totalProcessed;
+            document.getElementById('configTotalRejected').textContent = config.currentStats.totalRejected;
+            document.getElementById('configUtilization').textContent = `${config.currentUtilization}%`;
+        }
+    } catch (error) {
+        console.error('Erro ao carregar configurações:', error);
+        showNotification('❌ Erro ao carregar configurações', 'error');
+    }
+}
+
+// Salvar configurações
+async function saveQueueConfig() {
+    try {
+        const maxOrders = parseInt(document.getElementById('maxOrders').value);
+        const batchSize = parseInt(document.getElementById('batchSize').value);
+        const batchDelay = parseInt(document.getElementById('batchDelay').value);
+        const cronSync = document.getElementById('cronSync').value === 'true';
+        
+        const response = await fetch('/api/monitoring/queue-config', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                MAX_ORDERS: maxOrders,
+                BATCH_SIZE: batchSize,
+                BATCH_DELAY: batchDelay,
+                CRON_SYNC: cronSync
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('✅ Configurações salvas com sucesso', 'success');
+            closeQueueConfigModal();
+            
+            // Atualizar status do monitoramento
+            updateMonitoringStatus();
+        } else {
+            showNotification(`❌ Erro ao salvar: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao salvar configurações:', error);
+        showNotification('❌ Erro ao salvar configurações', 'error');
+    }
+}
+
+// Restaurar configurações padrão
+async function resetQueueConfig() {
+    if (!confirm('Tem certeza que deseja restaurar as configurações padrão?')) {
+        return;
+    }
+    
+    try {
+        const defaultConfig = {
+            MAX_ORDERS: 1000,
+            BATCH_SIZE: 10,
+            BATCH_DELAY: 2000,
+            CRON_SYNC: true
+        };
+        
+        const response = await fetch('/api/monitoring/queue-config', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(defaultConfig)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('🔄 Configurações restauradas para padrão', 'success');
+            loadCurrentConfig();
+        } else {
+            showNotification(`❌ Erro ao restaurar: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao restaurar configurações:', error);
+        showNotification('❌ Erro ao restaurar configurações', 'error');
+    }
+}
+
+// Fechar modal ao clicar fora dele
+window.onclick = function(event) {
+    const modal = document.getElementById('queueConfigModal');
+    if (event.target === modal) {
+        closeQueueConfigModal();
+    }
+}
+
+// Função para forçar atualização manual
+function forceRefresh() {
+    // Mostrar indicador de atualização forçada
+    const statusElement = document.getElementById('autoUpdateStatus');
+    if (statusElement) {
+        statusElement.innerHTML = '🔄 Atualização forçada em andamento...';
+    }
+    
+    // Atualizar tudo de uma vez
+    Promise.all([
+        fetchData(),
+        updateMonitoringStatus(),
+        updatePendingOrders()
+    ]).then(() => {
+        updateAutoUpdateStatus();
+        showNotification('✅ Atualização forçada concluída!', 'success');
+    }).catch(() => {
+        if (statusElement) {
+            statusElement.innerHTML = '❌ Erro na atualização forçada';
+        }
+        showNotification('❌ Erro na atualização forçada', 'error');
+    });
+}

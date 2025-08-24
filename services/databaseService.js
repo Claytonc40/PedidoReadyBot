@@ -118,7 +118,8 @@ class DatabaseService {
     // Inserir configurações padrão
     const defaultSettings = [
       { key: 'CRON_PATTERN', value: '*/5 * * * *', description: 'Padrão do cron job' },
-      { key: 'CRON_TIMEZONE', value: 'America/Sao_Paulo', description: 'Timezone do cron' }
+      { key: 'CRON_TIMEZONE', value: 'America/Sao_Paulo', description: 'Timezone do cron' },
+      { key: 'MONITORING_INTERVAL', value: '30000', description: 'Intervalo de monitoramento em tempo real (ms)' }
     ];
 
     defaultSettings.forEach(setting => {
