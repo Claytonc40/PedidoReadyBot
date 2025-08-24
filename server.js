@@ -943,6 +943,20 @@ async function startServer() {
     // Aguardar inicialização do banco de dados
     await databaseService.init();
     
+    // Inicializar variáveis globais
+    global.storeResults = [];
+    global.totalProcessed = 0;
+    global.errorCount = 0;
+    global.totalStores = 0;
+    global.successfulStores = 0;
+    global.failedStores = 0;
+    global.lastProcessed = null;
+    global.lastDuration = 0;
+    global.lastStartTime = null;
+    global.lastEndTime = null;
+    
+    console.log('📊 Variáveis globais inicializadas');
+    
     app.listen(PORT, () => {
       console.log(`🚀 Servidor rodando na porta ${PORT}`);
       console.log(`📅 Cron job configurado para executar com padrão: ${databaseService.getSetting('CRON_PATTERN') || '*/5 * * * *'}`);

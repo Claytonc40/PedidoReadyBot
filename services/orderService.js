@@ -805,10 +805,13 @@ async function processOrders() {
       global.failedStores = orderResult.failedStores;
       global.errorCount = 0;
       
-      // Manter dados acumulados existentes se não houver novos dados
-      if (!global.storeResults || global.storeResults.length === 0) {
-        global.storeResults = orderResult.storeResults;
-      }
+          // Manter dados acumulados existentes se não houver novos dados
+    if (!global.storeResults || global.storeResults.length === 0) {
+      global.storeResults = orderResult.storeResults;
+      console.log(`📊 Inicializando global.storeResults com ${orderResult.storeResults.length} restaurantes`);
+    } else {
+      console.log(`📊 global.storeResults já existe com ${global.storeResults.length} restaurantes`);
+    }
       
       global.lastDuration = duration;
       global.lastStartTime = new Date(startTime).toISOString();
@@ -892,11 +895,28 @@ async function processOrders() {
       // Obter dados acumulados anteriores se existirem
       const previousStoreData = global.storeResults?.find(s => s.store === storeName) || {};
       
+      // Calcular novos valores acumulados
+      const newProcessedSuccesses = (previousStoreData.processedSuccesses || 0) + storeSuccesses;
+      const newProcessedErrors = (previousStoreData.processedErrors || 0) + storeErrors;
+      const newTotalProcessed = (previousStoreData.totalProcessed || 0) + storeSuccesses + storeErrors;
+      
+      // Log para debug
+      console.log(`📊 Estatísticas para ${storeName}:`);
+      console.log(`   - Sucessos anteriores: ${previousStoreData.processedSuccesses || 0}`);
+      console.log(`   - Sucessos atuais: ${storeSuccesses}`);
+      console.log(`   - Sucessos acumulados: ${newProcessedSuccesses}`);
+      console.log(`   - Erros anteriores: ${previousStoreData.processedErrors || 0}`);
+      console.log(`   - Erros atuais: ${storeErrors}`);
+      console.log(`   - Erros acumulados: ${newProcessedErrors}`);
+      console.log(`   - Total processado anterior: ${previousStoreData.totalProcessed || 0}`);
+      console.log(`   - Total processado atual: ${storeSuccesses + storeErrors}`);
+      console.log(`   - Total processado acumulados: ${newTotalProcessed}`);
+      
       return {
         ...storeResult,
-        processedSuccesses: (previousStoreData.processedSuccesses || 0) + storeSuccesses,
-        processedErrors: (previousStoreData.processedErrors || 0) + storeErrors,
-        totalProcessed: (previousStoreData.totalProcessed || 0) + storeSuccesses + storeErrors,
+        processedSuccesses: newProcessedSuccesses,
+        processedErrors: newProcessedErrors,
+        totalProcessed: newTotalProcessed,
         // Manter dados de validação acumulados
         validOrders: (previousStoreData.validOrders || 0) + (storeResult.validOrders || 0),
         skippedOrders: (previousStoreData.skippedOrders || 0) + (storeResult.skippedOrders || 0),
@@ -904,7 +924,20 @@ async function processOrders() {
       };
     });
     
+    // Atualizar estatísticas globais
     global.storeResults = processedStoreResults;
+    
+    // Log para debug das estatísticas finais
+    console.log(`\n📊 ESTATÍSTICAS GLOBAIS ATUALIZADAS:`);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`✅ Total processado: ${global.totalProcessed}`);
+    console.log(`❌ Total de erros: ${global.errorCount}`);
+    console.log(`🏪 Total de restaurantes: ${global.totalStores}`);
+    console.log(`📦 StoreResults atualizados: ${global.storeResults.length} restaurantes`);
+    global.storeResults.forEach(store => {
+      console.log(`   🏪 ${store.store}: ✅${store.processedSuccesses} ❌${store.processedErrors} 📦${store.totalProcessed}`);
+    });
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     global.lastDuration = duration;
     global.lastStartTime = new Date(startTime).toISOString();
     global.lastEndTime = new Date().toISOString();
