@@ -22,6 +22,157 @@
         .container {
             max-width: 1400px;
             margin: 0 auto;
+            margin-left: 20%; /* Espaço para o sidebar */
+            transition: margin-left 0.3s ease;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 280px;
+            height: 100vh;
+            background: linear-gradient(180deg, rgba(102,126,234,0.95) 0%, rgba(118,75,162,0.9) 100%);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255,255,255,0.2);
+            z-index: 1000;
+            overflow-y: auto;
+            transition: transform 0.3s ease;
+            box-shadow: 5px 0 25px rgba(0,0,0,0.2);
+        }
+
+        .sidebar-header {
+            padding: 30px 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .sidebar-logo {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .sidebar-subtitle {
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.7);
+            font-weight: 300;
+        }
+
+        .sidebar-menu {
+            padding: 20px 0;
+        }
+
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+
+        .sidebar-section-title {
+            padding: 0 20px 10px;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .sidebar-item {
+            display: block;
+            padding: 12px 20px;
+            color: rgba(255,255,255,0.9);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+            font-weight: 500;
+            font-size: 0.95rem;
+        }
+
+        .sidebar-item:hover {
+            background: rgba(255,255,255,0.15);
+            color: white;
+            border-left-color: #ffffff;
+            transform: translateX(5px);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .sidebar-item.active {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border-left-color: #ffffff;
+            box-shadow: inset 0 0 20px rgba(255,255,255,0.1);
+        }
+
+        .sidebar-item.danger {
+            color: #ff6b6b;
+        }
+
+        .sidebar-item.danger:hover {
+            background: rgba(255,107,107,0.1);
+            border-left-color: #ff6b6b;
+        }
+
+        .sidebar-item.warning {
+            color: #ffd93d;
+        }
+
+        .sidebar-item.warning:hover {
+            background: rgba(255,217,61,0.1);
+            border-left-color: #ffd93d;
+        }
+
+        .sidebar-item.info {
+            color: #6bcf7f;
+        }
+
+        .sidebar-item.info:hover {
+            background: rgba(107,207,127,0.1);
+            border-left-color: #6bcf7f;
+        }
+
+        .sidebar-toggle {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1001;
+            background: linear-gradient(135deg, rgba(102,126,234,0.9), rgba(118,75,162,0.9));
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: none;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .sidebar-toggle:hover {
+            background: linear-gradient(135deg, rgba(102,126,234,1), rgba(118,75,162,1));
+            border-color: rgba(255,255,255,0.5);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        /* Responsividade do sidebar */
+        @media (max-width: 1024px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            
+            .container {
+                margin-left: 0;
+            }
+            
+            .sidebar-toggle {
+                display: block;
+            }
         }
 
         .header {
@@ -31,19 +182,14 @@
 
         .header-content {
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
             flex-wrap: wrap;
             gap: 20px;
         }
 
         .header-text {
-            text-align: left;
-            flex: 1;
-        }
-
-        .header-actions {
-            flex-shrink: 0;
+            text-align: center;
         }
 
         .header h1 {
@@ -57,29 +203,7 @@
             opacity: 0.9;
         }
 
-        .btn-home {
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            padding: 12px 24px;
-            border-radius: 25px;
-            text-decoration: none;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
 
-        .btn-home:hover {
-            background: rgba(255, 255, 255, 0.3);
-            border-color: rgba(255, 255, 255, 0.5);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-            color: white;
-            text-decoration: none;
-        }
 
         .nav-tabs {
             display: flex;
@@ -411,6 +535,79 @@
             margin: 0 auto 20px;
         }
 
+        /* Estilos para a aba de perfil */
+        .profile-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .profile-section h3 {
+            margin: 0 0 20px 0;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        .profile-info {
+            display: grid;
+            gap: 15px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+
+        .info-item label {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .info-item span {
+            color: #333;
+            font-weight: 500;
+        }
+
+        .profile-form {
+            max-width: 500px;
+        }
+
+        .session-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .session-stats .stat-item {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+
+        .session-stats .stat-number {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .session-stats .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
         @keyframes spin {
             0% {
                 transform: rotate(0deg);
@@ -696,6 +893,57 @@
 </head>
 
 <body>
+    <!-- Botão toggle para mobile -->
+    <div class="sidebar-toggle" onclick="toggleSidebar()">
+        ☰
+    </div>
+    
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">PedidoReadyBot</div>
+            <div class="sidebar-subtitle">Administração</div>
+        </div>
+        
+        <div class="sidebar-menu">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Navegação</div>
+                <a href="/" class="sidebar-item">
+                    🏠 Dashboard
+                </a>
+                <a href="#" class="sidebar-item active" onclick="showTab('overview')">
+                    📊 Visão Geral
+                </a>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Gerenciamento</div>
+                <a href="#" class="sidebar-item" onclick="showTab('restaurants')">
+                    🏪 Restaurantes
+                </a>
+                <a href="#" class="sidebar-item" onclick="showTab('areas')">
+                    🔧 Áreas
+                </a>
+                <a href="#" class="sidebar-item" onclick="showTab('monitoring')">
+                    🔄 Monitoramento
+                </a>
+                <a href="#" class="sidebar-item" onclick="showTab('settings')">
+                    ⚙️ Configurações
+                </a>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Usuário</div>
+                <a href="#" class="sidebar-item" onclick="showTab('profile')">
+                    👤 Perfil
+                </a>
+                <a href="#" class="sidebar-item danger" onclick="logout()">
+                    🚪 Sair
+                </a>
+            </div>
+        </div>
+    </div>
+    
     <div class="container">
         <div class="header">
             <div class="header-content">
@@ -703,11 +951,7 @@
                     <h1>⚙️ Painel de Administração</h1>
                     <p>Gerencie restaurantes, áreas e configurações do PedidoReadyBot</p>
                 </div>
-                <div class="header-actions">
-                    <a href="/" class="btn btn-home">
-                        🏠 Voltar ao Início
-                    </a>
-                </div>
+
             </div>
         </div>
 
@@ -716,7 +960,8 @@
             <button class="nav-tab" onclick="showTab('restaurants')">🏪 Restaurantes</button>
             <button class="nav-tab" onclick="showTab('areas')">🔧 Áreas</button>
             <button class="nav-tab" onclick="showTab('monitoring')">🔄 Monitoramento</button>
-            <button class="nav-tab" onclick="showTab('settings')">⚙️ Configurações</button>
+                            <button class="nav-tab" onclick="showTab('settings')">⚙️ Configurações</button>
+                <button class="nav-tab" onclick="showTab('profile')">👤 Perfil</button>
         </div>
 
         <!-- Tab: Visão Geral -->
@@ -798,6 +1043,74 @@
                     <div class="loading">
                         <div class="spinner"></div>
                         Carregando configurações...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Perfil -->
+        <div id="profile" class="tab-content">
+            <div class="content-card">
+                <div class="card-header">
+                    <div class="card-title">👤 Perfil do Usuário</div>
+                </div>
+                <div id="profile-content">
+                    <div class="profile-section">
+                        <h3>🔐 Informações de Acesso</h3>
+                        <div class="profile-info">
+                            <div class="info-item">
+                                <label>Email:</label>
+                                <span id="userEmail">carregando...</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Função:</label>
+                                <span>Administrador</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Último Login:</label>
+                                <span id="lastLogin">carregando...</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-section">
+                        <h3>🔑 Alterar Senha</h3>
+                        <form id="changePasswordForm" class="profile-form">
+                            <div class="form-group">
+                                <label class="form-label">Senha Atual</label>
+                                <input type="password" class="form-input" id="currentPassword" required placeholder="Digite sua senha atual">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Nova Senha</label>
+                                <input type="password" class="form-input" id="newPassword" required placeholder="Digite a nova senha" minlength="6">
+                                <small>A senha deve ter pelo menos 6 caracteres</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Confirmar Nova Senha</label>
+                                <input type="password" class="form-input" id="confirmPassword" required placeholder="Confirme a nova senha" minlength="6">
+                            </div>
+                            
+                            <div style="text-align: right;">
+                                <button type="button" class="btn btn-secondary" onclick="resetPasswordForm()">🔄 Limpar</button>
+                                <button type="submit" class="btn">💾 Alterar Senha</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <div class="profile-section">
+                        <h3>📊 Estatísticas da Sessão</h3>
+                        <div class="session-stats">
+                            <div class="stat-item">
+                                <span class="stat-number" id="sessionDuration">-</span>
+                                <span class="stat-label">Tempo de Sessão</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number" id="tokenExpiry">-</span>
+                                <span class="stat-label">Expira em</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1187,6 +1500,7 @@
         </div>
     </div>
 
+    <script src="js/auth.js"></script>
     <script src="admin.js"></script>
 </body>
 

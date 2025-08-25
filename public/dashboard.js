@@ -192,7 +192,12 @@ async function resetStoreStats() {
 // Função para buscar dados
 async function fetchData() {
     try {
-        const response = await fetch('/dashboard-data');
+        const response = await authManager.authenticatedFetch('/dashboard-data');
+        
+        if (!response) {
+            return; // authManager já redirecionou para login
+        }
+        
         const data = await response.json();
 
         // Preparar dados para a interface
@@ -240,8 +245,67 @@ function refreshData() {
     });
 }
 
+// Função inteligente que combina refreshData e forceRefresh
+function smartRefresh() {
+    const btn = document.getElementById('smartRefreshBtn');
+    const originalText = btn.innerHTML;
+    
+    // Desabilitar botão durante atualização
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Atualizando...';
+    
+    // Primeiro tentar atualização normal
+    Promise.all([
+        fetchData(),
+        updateMonitoringStatus(),
+        updatePendingOrders()
+    ]).then(() => {
+        updateAutoUpdateStatus();
+        showNotification('✅ Dados atualizados com sucesso!', 'success');
+        
+        // Restaurar botão
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }).catch((error) => {
+        console.warn('Atualização normal falhou, tentando forçar...', error);
+        
+        // Se falhar, tentar atualização forçada
+        btn.innerHTML = '🚀 Forçando atualização...';
+        
+        // Aguardar um pouco antes de tentar novamente
+        setTimeout(() => {
+            Promise.all([
+                fetchData(),
+                updateMonitoringStatus(),
+                updatePendingOrders()
+            ]).then(() => {
+                updateAutoUpdateStatus();
+                showNotification('✅ Atualização forçada concluída!', 'success');
+            }).catch((forceError) => {
+                console.error('Atualização forçada também falhou:', forceError);
+                showNotification('❌ Erro na atualização', 'error');
+            }).finally(() => {
+                // Restaurar botão
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        }, 1000);
+    });
+}
+
+// Verificar autenticação
+async function checkAuth() {
+    return await authManager.checkAuthAndRedirect();
+}
+
 // Inicializar
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    // Verificar autenticação primeiro
+    const isAuth = await checkAuth();
+    if (!isAuth) {
+        return; // authManager já redirecionou para login
+    }
+    
     fetchData();
     
     // Atualizar automaticamente a cada 10 segundos para melhor tempo real
@@ -505,7 +569,7 @@ async function processQueue() {
                     if (processResult.success) {
                         successCount++;
                         console.log(`✅ Pedido ${order.id} processado com sucesso`);
-                    } else {
+        } else {
                         errorCount++;
                         console.error(`❌ Erro ao processar pedido ${order.id}:`, processResult.error);
                     }
@@ -736,6 +800,30 @@ window.onclick = function(event) {
         closeQueueConfigModal();
     }
 }
+
+// Função para fazer logout
+function logout() {
+    authManager.logout();
+}
+
+// Função para controlar o sidebar
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    sidebar.classList.toggle('open');
+}
+
+// Fechar sidebar ao clicar fora (apenas em mobile)
+document.addEventListener('click', function(event) {
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.querySelector('.sidebar-toggle');
+    
+    if (window.innerWidth <= 1024 && 
+        !sidebar.contains(event.target) && 
+        !sidebarToggle.contains(event.target) &&
+        sidebar.classList.contains('open')) {
+        sidebar.classList.remove('open');
+    }
+});
 
 // Função para forçar atualização manual
 function forceRefresh() {

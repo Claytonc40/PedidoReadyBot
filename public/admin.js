@@ -2,6 +2,36 @@
 let currentRestaurantId = null;
 let currentAreaId = null;
 
+// Verificar autenticação ao carregar a página
+document.addEventListener('DOMContentLoaded', async function() {
+    // Verificar se o usuário está autenticado
+    const isAuth = await authManager.checkAuthAndRedirect();
+    if (!isAuth) {
+        return; // authManager já redirecionou para login
+    }
+    
+    // Carregar dados iniciais
+    loadStats();
+    
+    // Configurar formulários
+    const restaurantForm = document.getElementById('restaurantForm');
+    const areaForm = document.getElementById('areaForm');
+    const cronForm = document.getElementById('cronConfigForm');
+    const changePasswordForm = document.getElementById('changePasswordForm');
+    
+    if (restaurantForm) restaurantForm.addEventListener('submit', saveRestaurant);
+    if (areaForm) areaForm.addEventListener('submit', saveArea);
+    if (cronForm) cronForm.addEventListener('submit', saveCronConfig);
+    if (changePasswordForm) changePasswordForm.addEventListener('submit', handlePasswordChange);
+    
+    // Fechar modais ao clicar fora
+    window.addEventListener('click', function(event) {
+        if (event.target.classList.contains('modal')) {
+            event.target.style.display = 'none';
+        }
+    });
+});
+
 // Funções de navegação
 function showTab(tabName) {
     // Esconder todas as tabs
@@ -19,6 +49,9 @@ function showTab(tabName) {
     
     // Ativar tab no menu
     event.target.classList.add('active');
+    
+    // Atualizar sidebar
+    updateSidebarActiveItem(tabName);
     
     // Carregar dados da tab
     loadTabData(tabName);
@@ -41,13 +74,21 @@ function loadTabData(tabName) {
         case 'settings':
             loadSettings();
             break;
+        case 'profile':
+            loadProfile();
+            break;
     }
 }
 
 // Funções para estatísticas
 async function loadStats() {
     try {
-        const response = await fetch('/api/database/stats');
+        const response = await authManager.authenticatedFetch('/api/database/stats');
+        
+        if (!response) {
+            return; // authManager já redirecionou para login
+        }
+        
         const result = await response.json();
         
         if (result.success) {
@@ -92,7 +133,12 @@ function refreshStats() {
 // Funções para restaurantes
 async function loadRestaurants() {
     try {
-        const response = await fetch('/api/restaurants');
+        const response = await authManager.authenticatedFetch('/api/restaurants');
+        
+        if (!response) {
+            return; // authManager já redirecionou para login
+        }
+        
         const result = await response.json();
         
         if (result.success) {
@@ -263,7 +309,12 @@ async function deleteRestaurant(id) {
 // Funções para áreas
 async function loadAreas() {
     try {
-        const response = await fetch('/api/areas');
+        const response = await authManager.authenticatedFetch('/api/areas');
+        
+        if (!response) {
+            return; // authManager já redirecionou para login
+        }
+        
         const result = await response.json();
         
         if (result.success) {
@@ -434,7 +485,12 @@ async function deleteArea(id) {
 // Funções para configurações
 async function loadSettings() {
     try {
-        const response = await fetch('/api/settings');
+        const response = await authManager.authenticatedFetch('/api/settings');
+        
+        if (!response) {
+            return; // authManager já redirecionou para login
+        }
+        
         const result = await response.json();
         
         if (result.success) {
@@ -619,23 +675,7 @@ function showAlert(message, type) {
     }, 5000);
 }
 
-// Event listeners
-document.addEventListener('DOMContentLoaded', function() {
-    // Carregar dados iniciais
-    loadStats();
-    
-    // Configurar formulários
-    document.getElementById('restaurantForm').addEventListener('submit', saveRestaurant);
-    document.getElementById('areaForm').addEventListener('submit', saveArea);
-    document.getElementById('cronForm').addEventListener('submit', saveCronConfig);
-    
-    // Fechar modais ao clicar fora
-    window.addEventListener('click', function(event) {
-        if (event.target.classList.contains('modal')) {
-            event.target.style.display = 'none';
-        }
-    });
-});
+// Event listeners já configurados no início do arquivo
 
 // Funções para o modal do cron
 function showCronModal(key, currentValue) {
@@ -850,7 +890,12 @@ async function saveCronConfig(event) {
 // Carregar configurações de monitoramento
 async function loadMonitoringConfig() {
     try {
-        const response = await fetch('/api/monitoring/queue-config');
+        const response = await authManager.authenticatedFetch('/api/monitoring/queue-config');
+        
+        if (!response) {
+            return; // authManager já redirecionou para login
+        }
+        
         const result = await response.json();
         
         if (result.success) {
@@ -926,12 +971,12 @@ async function loadCurrentMonitoringConfig() {
             document.getElementById('batchDelay').value = config.BATCH_DELAY;
             document.getElementById('cronSync').value = config.CRON_SYNC.toString();
             
-            // Carregar intervalo de monitoramento do banco de dados
-            try {
-                const intervalResponse = await fetch('/api/settings');
-                if (intervalResponse.ok) {
-                    const intervalResult = await intervalResponse.json();
-                    if (intervalResult.success && intervalResult.data) {
+                    // Carregar intervalo de monitoramento do banco de dados
+        try {
+            const intervalResponse = await authManager.authenticatedFetch('/api/settings');
+            if (intervalResponse && intervalResponse.ok) {
+                const intervalResult = await intervalResponse.json();
+                if (intervalResult.success && intervalResult.data) {
                         // Procurar pela configuração MONITORING_INTERVAL
                         const monitoringSetting = intervalResult.data.find(s => s.key === 'MONITORING_INTERVAL');
                         if (monitoringSetting) {
@@ -1195,8 +1240,8 @@ document.addEventListener('DOMContentLoaded', function() {
 async function loadCronJobInfo() {
     try {
         // Carregar todas as configurações de uma vez
-        const response = await fetch('/api/settings');
-        if (response.ok) {
+        const response = await authManager.authenticatedFetch('/api/settings');
+        if (response && response.ok) {
             const result = await response.json();
             if (result.success && result.data) {
                 // Procurar pela configuração CRON_PATTERN
@@ -1267,6 +1312,122 @@ window.onclick = function(event) {
 // Variáveis globais para importação
 let selectedFile = null;
 let importData = null;
+
+// ===== FUNÇÕES DA ABA DE PERFIL =====
+
+// Carregar dados do perfil
+async function loadProfile() {
+    try {
+        // Carregar informações do usuário
+        const username = authManager.getUsername();
+        document.getElementById('userEmail').textContent = username || 'N/A';
+        
+        // Calcular tempo de sessão
+        updateSessionStats();
+        
+    } catch (error) {
+        console.error('Erro ao carregar perfil:', error);
+        showError('Erro ao carregar dados do perfil');
+    }
+}
+
+// Atualizar estatísticas da sessão
+function updateSessionStats() {
+    try {
+        const token = authManager.getToken();
+        if (token) {
+            // Decodificar token para obter informações
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            const now = Math.floor(Date.now() / 1000);
+            const exp = payload.exp;
+            
+            // Calcular tempo restante
+            const timeLeft = exp - now;
+            if (timeLeft > 0) {
+                const hours = Math.floor(timeLeft / 3600);
+                const minutes = Math.floor((timeLeft % 3600) / 60);
+                document.getElementById('tokenExpiry').textContent = `${hours}h ${minutes}m`;
+            } else {
+                document.getElementById('tokenExpiry').textContent = 'Expirado';
+            }
+            
+            // Calcular tempo de sessão (aproximado)
+            const sessionStart = payload.iat;
+            const sessionDuration = now - sessionStart;
+            const hours = Math.floor(sessionDuration / 3600);
+            const minutes = Math.floor((sessionDuration % 3600) / 60);
+            document.getElementById('sessionDuration').textContent = `${hours}h ${minutes}m`;
+        }
+    } catch (error) {
+        console.error('Erro ao calcular estatísticas da sessão:', error);
+        document.getElementById('sessionDuration').textContent = 'Erro';
+        document.getElementById('tokenExpiry').textContent = 'Erro';
+    }
+}
+
+
+
+// Manipular alteração de senha
+async function handlePasswordChange(event) {
+    event.preventDefault();
+    
+    const currentPassword = document.getElementById('currentPassword').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    
+    // Validações
+    if (!currentPassword || !newPassword || !confirmPassword) {
+        showError('❌ Por favor, preencha todos os campos.');
+        return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+        showError('❌ As senhas não coincidem.');
+        return;
+    }
+    
+    if (newPassword.length < 6) {
+        showError('❌ A nova senha deve ter pelo menos 6 caracteres.');
+        return;
+    }
+    
+    try {
+        const response = await authManager.authenticatedFetch('/api/auth/change-password', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                currentPassword,
+                newPassword
+            })
+        });
+        
+        if (!response) {
+            return; // authManager já redirecionou para login
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showSuccess('✅ Senha alterada com sucesso!');
+            resetPasswordForm();
+        } else {
+            showError(`❌ ${result.error}`);
+        }
+    } catch (error) {
+        console.error('Erro ao alterar senha:', error);
+        showError('❌ Erro de conexão. Tente novamente.');
+    }
+}
+
+// Resetar formulário de senha
+function resetPasswordForm() {
+    const form = document.getElementById('changePasswordForm');
+    if (form) {
+        form.reset();
+    }
+}
 
 // Mostrar modal de importação
 function showImportModal() {
@@ -1499,5 +1660,45 @@ function downloadTemplate() {
     } catch (error) {
         console.error('Erro ao baixar modelo:', error);
         showError('❌ Erro ao baixar modelo Excel');
+    }
+}
+
+// ===== FUNÇÕES DO SIDEBAR =====
+
+// Função para controlar o sidebar
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    sidebar.classList.toggle('open');
+}
+
+// Fechar sidebar ao clicar fora (apenas em mobile)
+document.addEventListener('click', function(event) {
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.querySelector('.sidebar-toggle');
+    
+    if (window.innerWidth <= 1024 && 
+        !sidebar.contains(event.target) && 
+        !sidebarToggle.contains(event.target) &&
+        sidebar.classList.contains('open')) {
+        sidebar.classList.remove('open');
+    }
+});
+
+// Função para fazer logout
+function logout() {
+    authManager.logout();
+}
+
+// Função para atualizar item ativo no sidebar
+function updateSidebarActiveItem(tabName) {
+    // Remover classe active de todos os itens
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    
+    // Adicionar classe active ao item correspondente
+    const activeItem = document.querySelector(`[onclick="showTab('${tabName}')"]`);
+    if (activeItem) {
+        activeItem.classList.add('active');
     }
 }

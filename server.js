@@ -24,6 +24,8 @@ const {
   updateQueueConfig
 } = require('./services/orderService');
 const databaseService = require('./services/databaseService');
+const authService = require('./services/authService');
+const { authenticateToken, requireAdmin } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -56,17 +58,90 @@ app.use(express.urlencoded({ extended: true }));
 // Servir arquivos estáticos
 app.use(express.static('public'));
 
-// Rotas básicas
-app.get('/', (req, res) => {
+// Rota para a página de login
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// Rotas de autenticação
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Usuário e senha são obrigatórios'
+      });
+    }
+    
+    const result = await authService.login(username, password);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(401).json(result);
+    }
+  } catch (error) {
+    console.error('Erro no login:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+app.post('/api/auth/change-password', async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Senha atual e nova senha são obrigatórias'
+      });
+    }
+    
+    const result = await authService.changePassword(currentPassword, newPassword);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Erro ao alterar senha:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+app.get('/api/auth/verify', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    user: req.user
+  });
+});
+
+// Rota raiz - redirecionar para login (mantida para compatibilidade)
+app.get('/root', (req, res) => {
+  res.redirect('/login');
+});
+
+// Rota de informações da API (protegida)
+app.get('/api/info', authenticateToken, (req, res) => {
   res.json({
     message: 'PedidoReadyBot API',
     status: 'running',
+    user: req.user,
         endpoints: {
       health: '/health',
       process: '/process-orders',
       status: '/status',
       checkpoint: '/checkpoint',
-      dashboard: '/dashboard',
+      dashboard: '/',
       admin: '/admin',
       testToken: '/test-token-request',
       testTokenPage: '/test-token',
@@ -94,14 +169,19 @@ app.get('/', (req, res) => {
   });
 });
 
-// Rota para o dashboard
-app.get('/dashboard', (req, res) => {
+// Rota para o dashboard (HTML servido sem autenticação, autenticação feita no frontend)
+app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Rota para o painel de administração
+// Rota para o painel de administração (HTML servido sem autenticação, autenticação feita no frontend)
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// Rota para o dashboard (alias)
+app.get('/dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Rota para teste de token
@@ -167,7 +247,7 @@ app.post('/reset-store-stats', (req, res) => {
 });
 
 // Endpoint para dados do dashboard
-app.get('/dashboard-data', (req, res) => {
+app.get('/dashboard-data', authenticateToken, (req, res) => {
   res.json({
     status: 'running',
     lastProcessed: global.lastProcessed || 'Nunca processado',
@@ -193,7 +273,7 @@ app.get('/dashboard-data', (req, res) => {
 // ===== API PARA GERENCIAMENTO DO BANCO DE DADOS =====
 
 // Obter estatísticas do banco de dados
-app.get('/api/database/stats', (req, res) => {
+app.get('/api/database/stats', authenticateToken, (req, res) => {
   try {
     const stats = databaseService.getDatabaseStats();
     res.json({ success: true, data: stats });
@@ -223,7 +303,7 @@ app.get('/api/cancelled-orders', (req, res) => {
 // ===== RESTAURANTES =====
 
 // Listar todos os restaurantes
-app.get('/api/restaurants', (req, res) => {
+app.get('/api/restaurants', authenticateToken, (req, res) => {
   try {
     const restaurants = databaseService.getAllRestaurants();
     res.json({ success: true, data: restaurants });
@@ -508,7 +588,7 @@ app.delete('/api/areas/:id', (req, res) => {
 // ===== CONFIGURAÇÕES =====
 
 // Listar todas as configurações
-app.get('/api/settings', (req, res) => {
+app.get('/api/settings', authenticateToken, (req, res) => {
   try {
     const settings = databaseService.getAllSettings();
     res.json({ success: true, data: settings });
@@ -518,7 +598,7 @@ app.get('/api/settings', (req, res) => {
 });
 
 // Atualizar configuração
-app.put('/api/settings/:key', (req, res) => {
+app.put('/api/settings/:key', authenticateToken, requireAdmin, (req, res) => {
   try {
     const { value, description } = req.body;
     const key = req.params.key;
@@ -650,7 +730,7 @@ app.post('/test-token-request', async (req, res) => {
 // ===== ENDPOINTS DE MONITORAMENTO CONTÍNUO =====
 
 // Iniciar monitoramento contínuo
-app.post('/api/monitoring/start', async (req, res) => {
+app.post('/api/monitoring/start', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const result = await startMonitoring();
     if (result) {
@@ -674,7 +754,7 @@ app.post('/api/monitoring/start', async (req, res) => {
 });
 
 // Parar monitoramento contínuo
-app.post('/api/monitoring/stop', async (req, res) => {
+app.post('/api/monitoring/stop', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const result = stopMonitoring();
     if (result) {
@@ -873,21 +953,21 @@ function setupCronJob() {
     cronJob = null;
   }
   
-  const cronPattern = databaseService.getSetting('CRON_PATTERN') || '*/5 * * * *';
-  const cronTimezone = databaseService.getSetting('CRON_TIMEZONE') || 'America/Sao_Paulo';
-  
+const cronPattern = databaseService.getSetting('CRON_PATTERN') || '*/5 * * * *';
+const cronTimezone = databaseService.getSetting('CRON_TIMEZONE') || 'America/Sao_Paulo';
+
   console.log(`📅 Configurando cron job com padrão: ${cronPattern}`);
   console.log(`🌍 Timezone: ${cronTimezone}`);
   
   try {
     cronJob = cron.schedule(cronPattern, async () => {
-      console.log('📅 Executando cron job para processar pedidos...');
-      try {
-        const result = await processOrders();
-        if (!result.success) {
-          console.log('⚠️ Cron job executado com avisos:', result.message);
-        } else {
-          console.log('✅ Cron job executado com sucesso');
+  console.log('📅 Executando cron job para processar pedidos...');
+  try {
+    const result = await processOrders();
+    if (!result.success) {
+      console.log('⚠️ Cron job executado com avisos:', result.message);
+    } else {
+      console.log('✅ Cron job executado com sucesso');
           
           // Mostrar informações detalhadas sobre limpeza da fila
           if (result.queueCleanup && result.queueCleanup.removed > 0) {
@@ -903,11 +983,11 @@ function setupCronJob() {
             console.log(`   - Mensagem: ${result.queueCleanup.message}`);
             console.log(`🧹 ==========================================`);
           }
-        }
-      } catch (error) {
-        console.error('❌ Erro crítico no cron job:', error.message);
-      }
-    }, {
+    }
+  } catch (error) {
+    console.error('❌ Erro crítico no cron job:', error.message);
+  }
+}, {
       timezone: cronTimezone,
       scheduled: true
     });
@@ -1048,6 +1128,9 @@ async function startServer() {
   try {
     // Aguardar inicialização do banco de dados
     await databaseService.init();
+    
+    // Inicializar senha padrão se necessário
+    await authService.initializeDefaultPassword();
     
     // Inicializar variáveis globais
     global.storeResults = [];
