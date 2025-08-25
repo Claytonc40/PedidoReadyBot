@@ -30,7 +30,16 @@ class DatabaseService {
       const token = this.getSetting('JWT_TOKEN');
       if (!token || token === 'aguardando_obtencao_automatica' || token === 'seu_token_jwt_aqui') {
         console.log('🔐 Inicializando token JWT...');
-        await this.refreshToken();
+        
+        // Se o banco tem placeholder, usar token do arquivo de configuração
+        const configToken = process.env.JWT_TOKEN;
+        if (configToken && configToken !== 'aguardando_obtencao_automatica' && configToken !== 'seu_token_jwt_aqui') {
+          console.log('✅ Usando token do arquivo de configuração');
+          this.updateSetting('JWT_TOKEN', configToken, 'Token JWT do arquivo de configuração');
+        } else {
+          console.log('🔄 Tentando obter token automaticamente...');
+          await this.refreshToken();
+        }
       }
     } catch (error) {
       console.log('⚠️ Não foi possível obter token na inicialização:', error.message);
@@ -132,13 +141,15 @@ class DatabaseService {
       }
     });
 
-    // Criar JWT_TOKEN se não existir (será preenchido automaticamente)
+    // Criar JWT_TOKEN se não existir (usar token do arquivo de configuração)
     const jwtExists = this.db.prepare('SELECT id FROM settings WHERE key = ?').get('JWT_TOKEN');
     if (!jwtExists) {
+      const configToken = process.env.JWT_TOKEN;
+      const tokenValue = configToken && configToken !== 'aguardando_obtencao_automatica' ? configToken : 'aguardando_obtencao_automatica';
       this.db.prepare(`
         INSERT INTO settings (key, value, description) 
         VALUES (?, ?, ?)
-      `).run('JWT_TOKEN', 'aguardando_obtencao_automatica', 'Token JWT obtido automaticamente da API');
+      `).run('JWT_TOKEN', tokenValue, 'Token JWT obtido automaticamente da API');
     }
 
     console.log('✅ Dados padrão inseridos/verificados');
@@ -271,10 +282,19 @@ class DatabaseService {
     try {
       let token = this.getSetting('JWT_TOKEN');
       
-      // Se não há token ou está expirado, obter um novo
-      if (!token || token === 'seu_token_jwt_aqui') {
-        console.log('🔐 Token não encontrado ou inválido, obtendo novo token...');
-        token = await this.refreshToken();
+      // Se não há token ou está expirado ou é placeholder, obter um novo
+      if (!token || token === 'seu_token_jwt_aqui' || token === 'aguardando_obtencao_automatica') {
+        console.log('🔐 Token não encontrado, inválido ou é placeholder, obtendo novo token...');
+        
+        // Se o banco tem placeholder, usar token do arquivo de configuração primeiro
+        const configToken = process.env.JWT_TOKEN;
+        if (configToken && configToken !== 'aguardando_obtencao_automatica' && configToken !== 'seu_token_jwt_aqui') {
+          console.log('✅ Usando token do arquivo de configuração');
+          this.updateSetting('JWT_TOKEN', configToken, 'Token JWT do arquivo de configuração');
+          return configToken;
+        } else {
+          token = await this.refreshToken();
+        }
       }
       
       return token;
@@ -286,8 +306,11 @@ class DatabaseService {
 
   async refreshToken() {
     try {
-      console.log('🔄 Obtendo novo token da API...');
+      console.log('🔄 Tentando obter novo token da API...');
+      console.log('⚠️ AVISO: API de renovação está com problemas de timeout');
+      console.log('🔧 Usando token configurado manualmente como fallback');
       
+      // Tentar renovar automaticamente primeiro
       const url = 'https://adsa-br-ui.fkdlv.com/ui/token';
       const headers = {
         'sec-ch-ua-platform': '"Windows"',
@@ -308,9 +331,11 @@ class DatabaseService {
       });
       
       const axios = require('axios');
+      
+      // Tentar com timeout reduzido
       const response = await axios.post(url, data, { 
         headers,
-        timeout: 60000 // 60 segundos de timeout
+        timeout: 10000 // 10 segundos de timeout
       });
       
       if (response.data && response.data.token) {
@@ -326,8 +351,17 @@ class DatabaseService {
       }
       
     } catch (error) {
-      console.error('❌ Erro ao obter novo token:', error.message);
-      throw new Error(`Falha ao obter novo token: ${error.message}`);
+      console.error('❌ Erro ao obter novo token automaticamente:', error.message);
+      console.log('🔄 Usando token configurado manualmente como fallback...');
+      
+      // Fallback: usar token do arquivo de configuração
+      const configToken = process.env.JWT_TOKEN;
+      if (configToken && configToken !== 'aguardando_obtencao_automatica' && configToken !== 'aguardando_obtencao_automatica...' && configToken !== 'seu_token_jwt_aqui') {
+        console.log('✅ Token de fallback encontrado e será usado');
+        return configToken;
+      } else {
+        throw new Error('Token de fallback não disponível. Configure JWT_TOKEN no config.env');
+      }
     }
   }
 
