@@ -170,6 +170,10 @@ class DatabaseService {
     return this.db.prepare('SELECT * FROM restaurants WHERE code = ?').get(code);
   }
 
+  getRestaurantByName(name) {
+    return this.db.prepare('SELECT * FROM restaurants WHERE name = ?').get(name);
+  }
+
   addRestaurant(code, name, description = '') {
     try {
       const result = this.db.prepare(`

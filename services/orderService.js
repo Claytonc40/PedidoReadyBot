@@ -808,14 +808,20 @@ async function processOrders() {
           try {
             console.log(`🔄 Processando pedido ${order.id} (Loja: ${order.store})...`);
             
-            // Buscar token da loja
-            const storeData = databaseService.getRestaurantByName(order.store);
-            if (!storeData || !storeData.token) {
-              throw new Error(`Token não encontrado para a loja ${order.store}`);
+            // Verificar se a loja existe
+            const storeData = databaseService.getRestaurantByCode(order.store);
+            if (!storeData) {
+              throw new Error(`Loja ${order.store} não encontrada no banco de dados`);
+            }
+            
+            // Usar token global (JWT_TOKEN das configurações)
+            const token = databaseService.getSetting('JWT_TOKEN');
+            if (!token || token === 'aguardando_obtencao_automatica') {
+              throw new Error('Token JWT não configurado ou aguardando obtenção automática');
             }
             
             // Processar pedido usando sendFullReady
-            const response = await sendFullReady(storeData.token, order.id);
+            const response = await sendFullReady(token, order.id);
             
             if (response) {
               results.push({ id: order.id, status: 'success', response, store: order.store });

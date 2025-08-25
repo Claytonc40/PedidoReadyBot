@@ -954,12 +954,21 @@ app.post('/api/orders/process-full-ready', async (req, res) => {
     
     console.log(`🚀 Processando pedido ${orderId} da loja ${store} usando sendFullReady`);
     
-    // Buscar token da loja
-    const storeData = databaseService.getRestaurantByName(store);
-    if (!storeData || !storeData.token) {
+    // Verificar se a loja existe
+    const storeData = databaseService.getRestaurantByCode(store);
+    if (!storeData) {
       return res.status(400).json({
         success: false,
-        error: `Token não encontrado para a loja ${store}`
+        error: `Loja ${store} não encontrada no banco de dados`
+      });
+    }
+    
+    // Usar token global (JWT_TOKEN das configurações)
+    const token = databaseService.getSetting('JWT_TOKEN');
+    if (!token || token === 'aguardando_obtencao_automatica') {
+      return res.status(400).json({
+        success: false,
+        error: 'Token JWT não configurado ou aguardando obtenção automática'
       });
     }
     
@@ -967,7 +976,7 @@ app.post('/api/orders/process-full-ready', async (req, res) => {
     const { sendFullReady } = require('./services/orderService');
     
     // Processar pedido
-    const result = await sendFullReady(storeData.token, orderId);
+    const result = await sendFullReady(token, orderId);
     
     if (result) {
       console.log(`✅ Pedido ${orderId} processado com sucesso`);
