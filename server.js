@@ -804,9 +804,9 @@ app.post('/api/monitoring/process-queue', async (req, res) => {
 });
 
 // Obter configurações da fila
-app.get('/api/monitoring/queue-config', (req, res) => {
+app.get('/api/monitoring/queue-config', async (req, res) => {
   try {
-    const config = getQueueConfig();
+    const config = await getQueueConfig();
     res.json({ success: true, data: config });
   } catch (error) {
     res.status(500).json({ 
@@ -817,7 +817,7 @@ app.get('/api/monitoring/queue-config', (req, res) => {
 });
 
 // Atualizar configurações da fila
-app.put('/api/monitoring/queue-config', (req, res) => {
+app.put('/api/monitoring/queue-config', async (req, res) => {
   try {
     const { MAX_ORDERS, BATCH_SIZE, BATCH_DELAY, CRON_SYNC } = req.body;
     
@@ -827,7 +827,7 @@ app.put('/api/monitoring/queue-config', (req, res) => {
     if (BATCH_DELAY !== undefined) newConfig.BATCH_DELAY = parseInt(BATCH_DELAY);
     if (CRON_SYNC !== undefined) newConfig.CRON_SYNC = Boolean(CRON_SYNC);
     
-    const updatedConfig = updateQueueConfig(newConfig);
+    const updatedConfig = await updateQueueConfig(newConfig);
     
     res.json({ 
       success: true, 
@@ -942,6 +942,10 @@ async function startServer() {
   try {
     // Aguardar inicialização do banco de dados
     await databaseService.init();
+    
+    // Carregar configurações da fila
+    const { loadQueueConfigFromDatabase } = require('./services/orderService');
+    await loadQueueConfigFromDatabase();
     
     // Inicializar variáveis globais
     global.storeResults = [];

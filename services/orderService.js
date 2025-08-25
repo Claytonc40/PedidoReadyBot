@@ -9,12 +9,35 @@ let lastOrderStates = new Map(); // Cache dos últimos estados dos pedidos
 let processingQueue = false; // Flag para evitar processamento simultâneo
 
 // Configurações da fila
-const QUEUE_CONFIG = {
+let QUEUE_CONFIG = {
   MAX_ORDERS: 1000, // Máximo de pedidos na fila
   BATCH_SIZE: 10, // Pedidos processados por lote
   BATCH_DELAY: 2000, // Delay entre lotes (2 segundos)
   CRON_SYNC: true // Sincronizar com cron job
 };
+
+// Função para carregar configurações da fila do banco de dados
+async function loadQueueConfigFromDatabase() {
+  try {
+    console.log('⚙️ Carregando configurações da fila do banco de dados...');
+    
+    // Tentar carregar configurações salvas
+    const savedConfig = await databaseService.getSetting('QUEUE_CONFIG');
+    if (savedConfig) {
+      try {
+        const parsedConfig = JSON.parse(savedConfig);
+        QUEUE_CONFIG = { ...QUEUE_CONFIG, ...parsedConfig };
+        console.log('✅ Configurações da fila carregadas do banco:', QUEUE_CONFIG);
+      } catch (parseError) {
+        console.log('⚠️ Erro ao parsear configurações da fila, usando padrões');
+      }
+    } else {
+      console.log('ℹ️ Nenhuma configuração da fila encontrada no banco, usando padrões');
+    }
+  } catch (error) {
+    console.log('⚠️ Erro ao carregar configurações da fila, usando padrões:', error.message);
+  }
+}
 
 // Estatísticas da fila
 let queueStats = {
@@ -828,12 +851,13 @@ async function processOrders() {
       };
     }
     
-    // Processar cada pedido
+    // Processar pedidos em lotes usando configurações da fila
     const results = [];
     let successCount = 0;
     let errorCount = 0;
     
     console.log(`\n🚀 INICIANDO PROCESSAMENTO DE ${orderIds.length} PEDIDOS`);
+    console.log(`📊 Configurações de lote: ${QUEUE_CONFIG.BATCH_SIZE} pedidos por lote, ${QUEUE_CONFIG.BATCH_DELAY}ms entre lotes`);
     console.log(`📊 Estatísticas por restaurante:`);
     
     // Agrupar pedidos por restaurante para melhor visualização
@@ -853,25 +877,44 @@ async function processOrders() {
       console.log(`   🏪 ${store}: ${ordersByStore[store].length} pedidos`);
     });
     
-    console.log(`\n🔄 PROCESSANDO PEDIDOS...`);
+    console.log(`\n🔄 PROCESSANDO PEDIDOS EM LOTES...`);
     
-    for (const id of orderIds) {
-      try {
-        // Encontrar o restaurante do pedido
-        const order = allOrders.find(o => o.id === id);
-        const store = order?.store || 'Desconhecido';
-        
-        console.log(`\n🔄 Processando pedido ${id} (Loja: ${store})...`);
-        const response = await sendFullReady(token, id);
-        results.push({ id, status: 'success', response, store });
-        successCount++;
-        console.log(`✅ Pedido ${id} (Loja: ${store}) processado com sucesso`);
-      } catch (error) {
-        console.error(`❌ Erro ao processar pedido ${id}:`, error.message);
-        const order = allOrders.find(o => o.id === id);
-        const store = order?.store || 'Desconhecido';
-        results.push({ id, status: 'error', error: error.message, store });
-        errorCount++;
+    // Processar em lotes
+    const batchSize = QUEUE_CONFIG.BATCH_SIZE;
+    const batches = Math.ceil(orderIds.length / batchSize);
+    
+    for (let batch = 0; batch < batches; batch++) {
+      const startIndex = batch * batchSize;
+      const endIndex = Math.min(startIndex + batchSize, orderIds.length);
+      const currentBatch = orderIds.slice(startIndex, endIndex);
+      
+      console.log(`\n📦 Processando lote ${batch + 1}/${batches} (${currentBatch.length} pedidos)`);
+      
+      // Processar pedidos do lote atual
+      for (const id of currentBatch) {
+        try {
+          // Encontrar o restaurante do pedido
+          const order = allOrders.find(o => o.id === id);
+          const store = order?.store || 'Desconhecido';
+          
+          console.log(`🔄 Processando pedido ${id} (Loja: ${store})...`);
+          const response = await sendFullReady(token, id);
+          results.push({ id, status: 'success', response, store });
+          successCount++;
+          console.log(`✅ Pedido ${id} (Loja: ${store}) processado com sucesso`);
+        } catch (error) {
+          console.error(`❌ Erro ao processar pedido ${id}:`, error.message);
+          const order = allOrders.find(o => o.id === id);
+          const store = order?.store || 'Desconhecido';
+          results.push({ id, status: 'error', error: error.message, store });
+          errorCount++;
+        }
+      }
+      
+      // Pausa entre lotes (exceto no último lote)
+      if (batch < batches - 1) {
+        console.log(`⏳ Aguardando ${QUEUE_CONFIG.BATCH_DELAY}ms antes do próximo lote...`);
+        await new Promise(resolve => setTimeout(resolve, QUEUE_CONFIG.BATCH_DELAY));
       }
     }
     
@@ -1118,6 +1161,9 @@ async function startMonitoring() {
   console.log('🚀 Iniciando monitoramento contínuo de pedidos...');
   console.log('⏰ Intervalo de verificação: 30 segundos');
   
+  // Carregar configurações da fila do banco de dados
+  await loadQueueConfigFromDatabase();
+  
   isMonitoring = true;
   
   // Primeira verificação imediata
@@ -1242,9 +1288,18 @@ async function checkForOrderChanges() {
     console.log(`📋 Novos pedidos na fila: ${newPendingOrders.length}`);
     console.log(`📋 Total na fila: ${pendingOrders.length}`);
     
-    // Se há pedidos na fila, apenas logar (processamento será feito pelo cron)
+    // Se há pedidos na fila e o cron está sincronizado, processar automaticamente
     if (pendingOrders.length > 0) {
-      console.log(`📋 ${pendingOrders.length} pedidos aguardando processamento pelo cron job`);
+      if (QUEUE_CONFIG.CRON_SYNC) {
+        console.log(`📋 ${pendingOrders.length} pedidos na fila - processamento automático pelo cron job`);
+        // Processar fila automaticamente se não estiver sendo processada
+        if (!processingQueue) {
+          console.log(`🚀 Iniciando processamento automático da fila...`);
+          processPendingOrdersQueue();
+        }
+      } else {
+        console.log(`📋 ${pendingOrders.length} pedidos aguardando processamento manual`);
+      }
     }
     
   } catch (error) {
@@ -1328,9 +1383,51 @@ async function processPendingOrdersQueue() {
     const processedIds = results.map(r => r.id);
     const queueCleanupResult = clearProcessedOrdersFromQueue(processedIds);
     
-    // Atualizar estatísticas da fila (já feito na função auxiliar)
-    // queueStats.totalProcessed += successCount; // Removido - já é feito na função auxiliar
-    // queueStats.lastProcessed = new Date().toISOString(); // Removido - já é feito na função auxiliar
+    // Atualizar estatísticas da fila
+    queueStats.totalProcessed += successCount;
+    queueStats.lastProcessed = new Date().toISOString();
+    
+    // Atualizar estatísticas globais
+    global.lastQueueProcessed = new Date().toISOString();
+    global.totalQueueProcessed = (global.totalQueueProcessed || 0) + successCount;
+    global.queueErrorCount = (global.queueErrorCount || 0) + errorCount;
+    
+    // Atualizar estatísticas por restaurante
+    const storeStats = {};
+    results.forEach(result => {
+      const store = result.store;
+      if (!storeStats[store]) {
+        storeStats[store] = { success: 0, error: 0 };
+      }
+      if (result.status === 'success') {
+        storeStats[store].success++;
+      } else {
+        storeStats[store].error++;
+      }
+    });
+    
+    // Atualizar global.storeResults com dados da fila
+    Object.keys(storeStats).forEach(storeName => {
+      const existingStore = global.storeResults?.find(s => s.store === storeName);
+      if (existingStore) {
+        existingStore.processedSuccesses = (existingStore.processedSuccesses || 0) + storeStats[storeName].success;
+        existingStore.processedErrors = (existingStore.processedErrors || 0) + storeStats[storeName].error;
+        existingStore.totalProcessed = (existingStore.totalProcessed || 0) + storeStats[storeName].success + storeStats[storeName].error;
+      } else {
+        // Criar novo registro se não existir
+        if (!global.storeResults) global.storeResults = [];
+        global.storeResults.push({
+          store: storeName,
+          processedSuccesses: storeStats[storeName].success,
+          processedErrors: storeStats[storeName].error,
+          totalProcessed: storeStats[storeName].success + storeStats[storeName].error,
+          success: storeStats[storeName].success > 0,
+          validOrders: 0,
+          skippedOrders: 0,
+          cancelledOrders: 0
+        });
+      }
+    });
     
     console.log(`\n🎯 PROCESSAMENTO DA FILA CONCLUÍDO`);
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
@@ -1345,11 +1442,11 @@ async function processPendingOrdersQueue() {
     console.log(`   - Total rejeitado: ${queueStats.totalRejected}`);
     console.log(`   - Vezes que fila ficou cheia: ${queueStats.maxReachedCount}`);
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-    
-    // Atualizar estatísticas globais
-    global.lastQueueProcessed = new Date().toISOString();
-    global.totalQueueProcessed = (global.totalQueueProcessed || 0) + successCount;
-    global.queueErrorCount = (global.queueErrorCount || 0) + errorCount;
+    console.log(`📊 Estatísticas por restaurante atualizadas:`);
+    Object.keys(storeStats).forEach(storeName => {
+      console.log(`   🏪 ${storeName}: ✅${storeStats[storeName].success} ❌${storeStats[storeName].error}`);
+    });
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     
   } catch (error) {
     console.error('💥 Erro crítico no processamento da fila:', error.message);
@@ -1479,7 +1576,7 @@ function addOrderToQueue(order) {
 /**
  * Obtém as configurações da fila
  */
-function getQueueConfig() {
+async function getQueueConfig() {
   return {
     ...QUEUE_CONFIG,
     currentStats: queueStats,
@@ -1490,7 +1587,7 @@ function getQueueConfig() {
 /**
  * Atualiza as configurações da fila
  */
-function updateQueueConfig(newConfig) {
+async function updateQueueConfig(newConfig) {
   if (newConfig.MAX_ORDERS && newConfig.MAX_ORDERS > 0) {
     QUEUE_CONFIG.MAX_ORDERS = newConfig.MAX_ORDERS;
   }
@@ -1505,6 +1602,14 @@ function updateQueueConfig(newConfig) {
   
   if (typeof newConfig.CRON_SYNC === 'boolean') {
     QUEUE_CONFIG.CRON_SYNC = newConfig.CRON_SYNC;
+  }
+  
+  // Salvar configurações no banco de dados
+  try {
+    await databaseService.updateSetting('QUEUE_CONFIG', JSON.stringify(QUEUE_CONFIG));
+    console.log('💾 Configurações da fila salvas no banco de dados');
+  } catch (error) {
+    console.log('⚠️ Erro ao salvar configurações da fila no banco:', error.message);
   }
   
   console.log('⚙️ Configurações da fila atualizadas:', QUEUE_CONFIG);
@@ -1525,6 +1630,7 @@ module.exports = {
   processPendingOrdersQueue,
   getMonitoringStatus,
   getPendingOrders,
+  loadQueueConfigFromDatabase,
   clearPendingOrders,
   addOrderToQueue,
   getQueueConfig,
