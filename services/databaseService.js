@@ -128,7 +128,9 @@ class DatabaseService {
     const defaultSettings = [
       { key: 'CRON_PATTERN', value: '*/5 * * * *', description: 'Padrão do cron job' },
       { key: 'CRON_TIMEZONE', value: 'America/Sao_Paulo', description: 'Timezone do cron' },
-      { key: 'MONITORING_INTERVAL', value: '30000', description: 'Intervalo de monitoramento em tempo real (ms)' }
+      { key: 'MONITORING_INTERVAL', value: '30000', description: 'Intervalo de monitoramento em tempo real (ms)' },
+      { key: 'BATCH_SIZE', value: '50', description: 'Número de pedidos processados por lote' },
+      { key: 'BATCH_DELAY', value: '2000', description: 'Delay entre lotes em milissegundos' }
     ];
 
     defaultSettings.forEach(setting => {

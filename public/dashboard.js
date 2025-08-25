@@ -446,22 +446,111 @@ async function clearQueue() {
     }
 }
 
-// Função para processar fila manualmente
+// Função para processar fila manualmente usando sendFullReady
 async function processQueue() {
     try {
-        const response = await fetch('/api/monitoring/process-queue', { method: 'POST' });
-        const result = await response.json();
+        // Mostrar indicador de processamento
+        const processBtn = document.querySelector('button[onclick="processQueue()"]');
+        const originalText = processBtn.innerHTML;
+        processBtn.innerHTML = '🔄 Processando...';
+        processBtn.disabled = true;
         
-        if (result.success) {
-            showNotification('🚀 Fila processada com sucesso', 'success');
-            updateMonitoringStatus(result.status);
-            updatePendingOrders();
-        } else {
-            showNotification(`❌ Erro ao processar fila: ${result.error}`, 'error');
+        // Buscar configurações de lote
+        const configResponse = await fetch('/api/monitoring/queue-config');
+        const configResult = await configResponse.json();
+        const batchSize = configResult.success ? configResult.data.BATCH_SIZE : 10;
+        
+        // Buscar pedidos na fila
+        const queueResponse = await fetch('/api/monitoring/pending-orders');
+        const queueResult = await queueResponse.json();
+        
+        if (!queueResult.success || queueResult.data.length === 0) {
+            showNotification('ℹ️ Nenhum pedido na fila para processar', 'info');
+            return;
         }
+        
+        const pendingOrders = queueResult.data;
+        const totalOrders = pendingOrders.length;
+        let processedCount = 0;
+        let successCount = 0;
+        let errorCount = 0;
+        
+        showNotification(`🚀 Iniciando processamento de ${totalOrders} pedidos em lotes de ${batchSize}`, 'info');
+        
+        // Processar em lotes
+        for (let i = 0; i < totalOrders; i += batchSize) {
+            const batch = pendingOrders.slice(i, i + batchSize);
+            const batchNumber = Math.floor(i / batchSize) + 1;
+            const totalBatches = Math.ceil(totalOrders / batchSize);
+            
+            showNotification(`📦 Processando lote ${batchNumber}/${totalBatches} (${batch.length} pedidos)`, 'info');
+            
+            // Processar cada pedido do lote
+            for (const order of batch) {
+                try {
+                    // Chamar sendFullReady para cada pedido
+                    const processResponse = await fetch('/api/orders/process-full-ready', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            orderId: order.id,
+                            store: order.store
+                        })
+                    });
+                    
+                    const processResult = await processResponse.json();
+                    
+                    if (processResult.success) {
+                        successCount++;
+                        console.log(`✅ Pedido ${order.id} processado com sucesso`);
+                    } else {
+                        errorCount++;
+                        console.error(`❌ Erro ao processar pedido ${order.id}:`, processResult.error);
+                    }
+                    
+                    processedCount++;
+                    
+                    // Atualizar progresso
+                    const progress = Math.round((processedCount / totalOrders) * 100);
+                    processBtn.innerHTML = `🔄 Processando... ${progress}%`;
+                    
+                } catch (error) {
+                    errorCount++;
+                    console.error(`❌ Erro ao processar pedido ${order.id}:`, error);
+                }
+            }
+            
+            // Delay entre lotes se configurado
+            if (i + batchSize < totalOrders && configResult.data.BATCH_DELAY > 0) {
+                await new Promise(resolve => setTimeout(resolve, configResult.data.BATCH_DELAY));
+            }
+        }
+        
+        // Resultado final
+        const message = `✅ Processamento concluído! ${successCount} sucessos, ${errorCount} erros de ${totalOrders} pedidos`;
+        showNotification(message, successCount > 0 ? 'success' : 'warning');
+        
+        // Atualizar interface
+        updateMonitoringStatus();
+        updatePendingOrders();
+        fetchData(); // Atualizar dashboard
+        
+        // Restaurar botão
+        processBtn.innerHTML = originalText;
+        processBtn.disabled = false;
+        
     } catch (error) {
         console.error('Erro ao processar fila:', error);
-        showNotification('❌ Erro ao processar fila', 'error');
+        showNotification(`❌ Erro ao processar fila: ${error.message}`, 'error');
+        
+        // Restaurar botão em caso de erro
+        const processBtn = document.querySelector('button[onclick="processQueue()"]');
+        if (processBtn) {
+            processBtn.innerHTML = '🚀 Processar Fila';
+            processBtn.disabled = false;
+        }
     }
 }
 

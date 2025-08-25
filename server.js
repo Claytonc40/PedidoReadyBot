@@ -76,6 +76,9 @@ app.get('/', (req, res) => {
         restaurants: '/api/restaurants',
         areas: '/api/areas',
         settings: '/api/settings',
+        orders: {
+          processFullReady: '/api/orders/process-full-ready'
+        },
         monitoring: {
           start: '/api/monitoring/start',
           stop: '/api/monitoring/stop',
@@ -804,9 +807,9 @@ app.post('/api/monitoring/process-queue', async (req, res) => {
 });
 
 // Obter configurações da fila
-app.get('/api/monitoring/queue-config', async (req, res) => {
+app.get('/api/monitoring/queue-config', (req, res) => {
   try {
-    const config = await getQueueConfig();
+    const config = getQueueConfig();
     res.json({ success: true, data: config });
   } catch (error) {
     res.status(500).json({ 
@@ -817,7 +820,7 @@ app.get('/api/monitoring/queue-config', async (req, res) => {
 });
 
 // Atualizar configurações da fila
-app.put('/api/monitoring/queue-config', async (req, res) => {
+app.put('/api/monitoring/queue-config', (req, res) => {
   try {
     const { MAX_ORDERS, BATCH_SIZE, BATCH_DELAY, CRON_SYNC } = req.body;
     
@@ -827,7 +830,7 @@ app.put('/api/monitoring/queue-config', async (req, res) => {
     if (BATCH_DELAY !== undefined) newConfig.BATCH_DELAY = parseInt(BATCH_DELAY);
     if (CRON_SYNC !== undefined) newConfig.CRON_SYNC = Boolean(CRON_SYNC);
     
-    const updatedConfig = await updateQueueConfig(newConfig);
+    const updatedConfig = updateQueueConfig(newConfig);
     
     res.json({ 
       success: true, 
@@ -937,15 +940,105 @@ function setupCronJob() {
   }
 }
 
+// Endpoint para processar pedidos usando sendFullReady
+app.post('/api/orders/process-full-ready', async (req, res) => {
+  try {
+    const { orderId, store } = req.body;
+    
+    if (!orderId || !store) {
+      return res.status(400).json({
+        success: false,
+        error: 'orderId e store são obrigatórios'
+      });
+    }
+    
+    console.log(`🚀 Processando pedido ${orderId} da loja ${store} usando sendFullReady`);
+    
+    // Buscar token da loja
+    const storeData = databaseService.getRestaurantByName(store);
+    if (!storeData || !storeData.token) {
+      return res.status(400).json({
+        success: false,
+        error: `Token não encontrado para a loja ${store}`
+      });
+    }
+    
+    // Importar e usar a função sendFullReady
+    const { sendFullReady } = require('./services/orderService');
+    
+    // Processar pedido
+    const result = await sendFullReady(storeData.token, orderId);
+    
+    if (result) {
+      console.log(`✅ Pedido ${orderId} processado com sucesso`);
+      
+      // Remover pedido da fila
+      const queueResult = await clearPendingOrders([orderId]);
+      
+      // Atualizar estatísticas globais
+      if (global.storeResults) {
+        const storeIndex = global.storeResults.findIndex(s => s.store === store);
+        if (storeIndex !== -1) {
+          global.storeResults[storeIndex].processedSuccesses = (global.storeResults[storeIndex].processedSuccesses || 0) + 1;
+          global.storeResults[storeIndex].totalProcessed = (global.storeResults[storeIndex].totalProcessed || 0) + 1;
+        } else {
+          global.storeResults.push({
+            store,
+            processedSuccesses: 1,
+            processedErrors: 0,
+            totalProcessed: 1,
+            success: true
+          });
+        }
+      }
+      
+      global.totalProcessed = (global.totalProcessed || 0) + 1;
+      
+      return res.json({
+        success: true,
+        message: `Pedido ${orderId} processado com sucesso`,
+        data: result,
+        queueCleaned: queueResult.success
+      });
+    } else {
+      throw new Error('Falha ao processar pedido');
+    }
+    
+  } catch (error) {
+    console.error(`❌ Erro ao processar pedido ${req.body?.orderId}:`, error.message);
+    
+    // Atualizar estatísticas de erro
+    const { store } = req.body;
+    if (store && global.storeResults) {
+      const storeIndex = global.storeResults.findIndex(s => s.store === store);
+      if (storeIndex !== -1) {
+        global.storeResults[storeIndex].processedErrors = (global.storeResults[storeIndex].processedErrors || 0) + 1;
+        global.storeResults[storeIndex].totalProcessed = (global.storeResults[storeIndex].totalProcessed || 0) + 1;
+      } else {
+        global.storeResults.push({
+          store,
+          processedSuccesses: 0,
+          processedErrors: 1,
+          totalProcessed: 1,
+          success: false
+        });
+      }
+    }
+    
+    global.errorCount = (global.errorCount || 0) + 1;
+    
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Inicialização do servidor
 async function startServer() {
   try {
     // Aguardar inicialização do banco de dados
     await databaseService.init();
-    
-    // Carregar configurações da fila
-    const { loadQueueConfigFromDatabase } = require('./services/orderService');
-    await loadQueueConfigFromDatabase();
     
     // Inicializar variáveis globais
     global.storeResults = [];
